@@ -1669,7 +1669,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
             headRepositoryOwnerLogin: "binbandit",
           },
           repositoryCloneUrls: {
-            "binbandit/daize": {
+            "binbandit/daize-code": {
               url: forkDir,
               sshUrl: forkDir,
             },
