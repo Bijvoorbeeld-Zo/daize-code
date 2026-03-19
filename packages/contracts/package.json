@@ -1,6 +1,6 @@
 {
   "name": "@daize/contracts",
-  "version": "0.0.10",
+  "version": "0.0.11-test.5",
   "private": true,
   "files": [
     "dist"
