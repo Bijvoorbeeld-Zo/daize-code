@@ -1,4 +1,4 @@
-import { Option, Schema } from "effect";
+import { Schema } from "effect";
 
 import { IsoDateTime, TrimmedNonEmptyString } from "./baseSchemas";
 
@@ -36,9 +36,7 @@ export const LinearConnectionSummary = Schema.Struct({
 export type LinearConnectionSummary = typeof LinearConnectionSummary.Type;
 
 export const LinearListIssuesInput = Schema.Struct({
-  refresh: Schema.optional(Schema.Boolean).pipe(
-    Schema.withConstructorDefault(() => Option.some(false)),
-  ),
+  refresh: Schema.optional(Schema.Boolean).pipe(Schema.withDecodingDefault(() => false)),
 });
 export type LinearListIssuesInput = typeof LinearListIssuesInput.Type;
 
