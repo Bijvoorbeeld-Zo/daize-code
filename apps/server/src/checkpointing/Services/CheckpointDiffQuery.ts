@@ -46,4 +46,4 @@ export interface CheckpointDiffQueryShape {
 export class CheckpointDiffQuery extends ServiceMap.Service<
   CheckpointDiffQuery,
   CheckpointDiffQueryShape
->()("daize/checkpointing/Services/CheckpointDiffQuery") {}
+>()("@daize.ai/cli/checkpointing/Services/CheckpointDiffQuery") {}

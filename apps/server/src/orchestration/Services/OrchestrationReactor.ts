@@ -28,4 +28,4 @@ export interface OrchestrationReactorShape {
 export class OrchestrationReactor extends ServiceMap.Service<
   OrchestrationReactor,
   OrchestrationReactorShape
->()("daize/orchestration/Services/OrchestrationReactor") {}
+>()("@daize.ai/cli/orchestration/Services/OrchestrationReactor") {}

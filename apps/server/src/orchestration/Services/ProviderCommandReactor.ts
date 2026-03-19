@@ -37,4 +37,4 @@ export interface ProviderCommandReactorShape {
 export class ProviderCommandReactor extends ServiceMap.Service<
   ProviderCommandReactor,
   ProviderCommandReactorShape
->()("daize/orchestration/Services/ProviderCommandReactor") {}
+>()("@daize.ai/cli/orchestration/Services/ProviderCommandReactor") {}

@@ -67,4 +67,4 @@ export interface OrchestrationEventStoreShape {
 export class OrchestrationEventStore extends ServiceMap.Service<
   OrchestrationEventStore,
   OrchestrationEventStoreShape
->()("daize/persistence/Services/OrchestrationEventStore") {}
+>()("@daize.ai/cli/persistence/Services/OrchestrationEventStore") {}

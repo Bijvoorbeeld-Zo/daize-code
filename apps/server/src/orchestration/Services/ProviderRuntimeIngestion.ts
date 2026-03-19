@@ -37,4 +37,6 @@ export interface ProviderRuntimeIngestionShape {
 export class ProviderRuntimeIngestionService extends ServiceMap.Service<
   ProviderRuntimeIngestionService,
   ProviderRuntimeIngestionShape
->()("daize/orchestration/Services/ProviderRuntimeIngestion/ProviderRuntimeIngestionService") {}
+>()(
+  "@daize.ai/cli/orchestration/Services/ProviderRuntimeIngestion/ProviderRuntimeIngestionService",
+) {}

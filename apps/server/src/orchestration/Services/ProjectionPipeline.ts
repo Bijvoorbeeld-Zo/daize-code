@@ -39,4 +39,4 @@ export interface OrchestrationProjectionPipelineShape {
 export class OrchestrationProjectionPipeline extends ServiceMap.Service<
   OrchestrationProjectionPipeline,
   OrchestrationProjectionPipelineShape
->()("daize/orchestration/Services/ProjectionPipeline/OrchestrationProjectionPipeline") {}
+>()("@daize.ai/cli/orchestration/Services/ProjectionPipeline/OrchestrationProjectionPipeline") {}

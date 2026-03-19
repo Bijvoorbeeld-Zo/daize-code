@@ -67,5 +67,5 @@ export class OrchestrationCommandReceiptRepository extends ServiceMap.Service<
   OrchestrationCommandReceiptRepository,
   OrchestrationCommandReceiptRepositoryShape
 >()(
-  "daize/persistence/Services/OrchestrationCommandReceipts/OrchestrationCommandReceiptRepository",
+  "@daize.ai/cli/persistence/Services/OrchestrationCommandReceipts/OrchestrationCommandReceiptRepository",
 ) {}

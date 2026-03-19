@@ -77,4 +77,4 @@ export interface OrchestrationEngineShape {
 export class OrchestrationEngineService extends ServiceMap.Service<
   OrchestrationEngineService,
   OrchestrationEngineShape
->()("daize/orchestration/Services/OrchestrationEngine/OrchestrationEngineService") {}
+>()("@daize.ai/cli/orchestration/Services/OrchestrationEngine/OrchestrationEngineService") {}

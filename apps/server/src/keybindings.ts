@@ -525,7 +525,7 @@ export interface KeybindingsShape {
  * Keybindings - Service tag for keybinding configuration operations.
  */
 export class Keybindings extends ServiceMap.Service<Keybindings, KeybindingsShape>()(
-  "daize/keybindings",
+  "@daize.ai/cli/keybindings",
 ) {}
 
 const makeKeybindings = Effect.gen(function* () {

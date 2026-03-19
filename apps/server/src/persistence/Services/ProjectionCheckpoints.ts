@@ -90,4 +90,4 @@ export interface ProjectionCheckpointRepositoryShape {
 export class ProjectionCheckpointRepository extends ServiceMap.Service<
   ProjectionCheckpointRepository,
   ProjectionCheckpointRepositoryShape
->()("daize/persistence/Services/ProjectionCheckpoints/ProjectionCheckpointRepository") {}
+>()("@daize.ai/cli/persistence/Services/ProjectionCheckpoints/ProjectionCheckpointRepository") {}

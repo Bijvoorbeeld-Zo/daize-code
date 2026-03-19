@@ -37,4 +37,4 @@ export interface CheckpointReactorShape {
 export class CheckpointReactor extends ServiceMap.Service<
   CheckpointReactor,
   CheckpointReactorShape
->()("daize/orchestration/Services/CheckpointReactor") {}
+>()("@daize.ai/cli/orchestration/Services/CheckpointReactor") {}

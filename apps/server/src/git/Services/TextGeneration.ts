@@ -96,5 +96,5 @@ export interface TextGenerationShape {
  * TextGeneration - Service tag for commit and PR text generation.
  */
 export class TextGeneration extends ServiceMap.Service<TextGeneration, TextGenerationShape>()(
-  "daize/git/Services/TextGeneration",
+  "@daize.ai/cli/git/Services/TextGeneration",
 ) {}

@@ -71,4 +71,6 @@ export interface ProjectionThreadSessionRepositoryShape {
 export class ProjectionThreadSessionRepository extends ServiceMap.Service<
   ProjectionThreadSessionRepository,
   ProjectionThreadSessionRepositoryShape
->()("daize/persistence/Services/ProjectionThreadSessions/ProjectionThreadSessionRepository") {}
+>()(
+  "@daize.ai/cli/persistence/Services/ProjectionThreadSessions/ProjectionThreadSessionRepository",
+) {}

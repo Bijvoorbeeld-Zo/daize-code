@@ -161,4 +161,4 @@ export interface ProjectionTurnRepositoryShape {
 export class ProjectionTurnRepository extends ServiceMap.Service<
   ProjectionTurnRepository,
   ProjectionTurnRepositoryShape
->()("daize/persistence/Services/ProjectionTurns/ProjectionTurnRepository") {}
+>()("@daize.ai/cli/persistence/Services/ProjectionTurns/ProjectionTurnRepository") {}

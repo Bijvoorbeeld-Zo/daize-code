@@ -197,7 +197,7 @@ export interface OpenShape {
 /**
  * Open - Service tag for browser/editor launch operations.
  */
-export class Open extends ServiceMap.Service<Open, OpenShape>()("daize/open") {}
+export class Open extends ServiceMap.Service<Open, OpenShape>()("@daize.ai/cli/open") {}
 
 // ==============================
 // Implementations

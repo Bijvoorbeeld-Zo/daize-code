@@ -31,4 +31,4 @@ export interface ProjectionSnapshotQueryShape {
 export class ProjectionSnapshotQuery extends ServiceMap.Service<
   ProjectionSnapshotQuery,
   ProjectionSnapshotQueryShape
->()("daize/orchestration/Services/ProjectionSnapshotQuery") {}
+>()("@daize.ai/cli/orchestration/Services/ProjectionSnapshotQuery") {}

@@ -23,5 +23,5 @@ export interface LinearServiceShape {
 }
 
 export class LinearService extends ServiceMap.Service<LinearService, LinearServiceShape>()(
-  "daize/linear/Services/LinearService",
+  "@daize.ai/cli/linear/Services/LinearService",
 ) {}

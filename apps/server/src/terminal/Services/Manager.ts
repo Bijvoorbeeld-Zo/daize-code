@@ -114,5 +114,5 @@ export interface TerminalManagerShape {
  * TerminalManager - Service tag for terminal session orchestration.
  */
 export class TerminalManager extends ServiceMap.Service<TerminalManager, TerminalManagerShape>()(
-  "daize/terminal/Services/Manager/TerminalManager",
+  "@daize.ai/cli/terminal/Services/Manager/TerminalManager",
 ) {}

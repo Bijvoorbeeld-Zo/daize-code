@@ -46,4 +46,4 @@ export interface RuntimeReceiptBusShape {
 export class RuntimeReceiptBus extends ServiceMap.Service<
   RuntimeReceiptBus,
   RuntimeReceiptBusShape
->()("daize/orchestration/Services/RuntimeReceiptBus") {}
+>()("@daize.ai/cli/orchestration/Services/RuntimeReceiptBus") {}

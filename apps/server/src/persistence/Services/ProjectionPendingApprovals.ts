@@ -88,4 +88,6 @@ export interface ProjectionPendingApprovalRepositoryShape {
 export class ProjectionPendingApprovalRepository extends ServiceMap.Service<
   ProjectionPendingApprovalRepository,
   ProjectionPendingApprovalRepositoryShape
->()("daize/persistence/Services/ProjectionPendingApprovals/ProjectionPendingApprovalRepository") {}
+>()(
+  "@daize.ai/cli/persistence/Services/ProjectionPendingApprovals/ProjectionPendingApprovalRepository",
+) {}

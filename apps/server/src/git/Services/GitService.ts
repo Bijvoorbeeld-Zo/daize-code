@@ -41,5 +41,5 @@ export interface GitServiceShape {
  * GitService - Service for Git command execution.
  */
 export class GitService extends ServiceMap.Service<GitService, GitServiceShape>()(
-  "daize/git/Services/GitService",
+  "@daize.ai/cli/git/Services/GitService",
 ) {}

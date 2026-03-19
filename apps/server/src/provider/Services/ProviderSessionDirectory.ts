@@ -54,4 +54,4 @@ export interface ProviderSessionDirectoryShape {
 export class ProviderSessionDirectory extends ServiceMap.Service<
   ProviderSessionDirectory,
   ProviderSessionDirectoryShape
->()("daize/provider/Services/ProviderSessionDirectory") {}
+>()("@daize.ai/cli/provider/Services/ProviderSessionDirectory") {}

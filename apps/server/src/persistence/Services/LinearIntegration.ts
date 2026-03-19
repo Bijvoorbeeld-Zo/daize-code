@@ -38,4 +38,4 @@ export interface LinearIntegrationRepositoryShape {
 export class LinearIntegrationRepository extends ServiceMap.Service<
   LinearIntegrationRepository,
   LinearIntegrationRepositoryShape
->()("daize/persistence/Services/LinearIntegration/LinearIntegrationRepository") {}
+>()("@daize.ai/cli/persistence/Services/LinearIntegration/LinearIntegrationRepository") {}

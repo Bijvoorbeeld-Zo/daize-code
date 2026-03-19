@@ -73,4 +73,4 @@ export interface ProviderSessionRuntimeRepositoryShape {
 export class ProviderSessionRuntimeRepository extends ServiceMap.Service<
   ProviderSessionRuntimeRepository,
   ProviderSessionRuntimeRepositoryShape
->()("daize/persistence/Services/ProviderSessionRuntime/ProviderSessionRuntimeRepository") {}
+>()("@daize.ai/cli/persistence/Services/ProviderSessionRuntime/ProviderSessionRuntimeRepository") {}

@@ -18,5 +18,5 @@ export interface ProviderHealthShape {
 }
 
 export class ProviderHealth extends ServiceMap.Service<ProviderHealth, ProviderHealthShape>()(
-  "daize/provider/Services/ProviderHealth",
+  "@daize.ai/cli/provider/Services/ProviderHealth",
 ) {}
