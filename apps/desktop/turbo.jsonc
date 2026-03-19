@@ -7,16 +7,16 @@
       "outputs": ["dist-electron/**"],
     },
     "dev": {
-      "dependsOn": ["t3#build"],
+      "dependsOn": ["@daize.ai/cli#build"],
       "persistent": true,
     },
     "start": {
-      "dependsOn": ["build", "@t3tools/web#build", "t3#build"],
+      "dependsOn": ["build", "@daize/web#build", "@daize.ai/cli#build"],
       "cache": false,
       "persistent": true,
     },
     "smoke-test": {
-      "dependsOn": ["build", "@t3tools/web#build", "t3#build"],
+      "dependsOn": ["build", "@daize/web#build", "@daize.ai/cli#build"],
       "cache": false,
       "outputs": [],
     },

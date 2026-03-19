@@ -26,7 +26,7 @@ import {
   type WsResponse as WsResponseMessage,
   WsResponse,
   type WsPushEnvelopeBase,
-} from "@t3tools/contracts";
+} from "@daize/contracts";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import {
   Cause,
@@ -77,7 +77,8 @@ import { AnalyticsService } from "./telemetry/Services/AnalyticsService.ts";
 import { expandHomePath } from "./os-jank.ts";
 import { makeServerPushBus } from "./wsServer/pushBus.ts";
 import { makeServerReadiness } from "./wsServer/readiness.ts";
-import { decodeJsonResult, formatSchemaError } from "@t3tools/shared/schemaJson";
+import { decodeJsonResult, formatSchemaError } from "@daize/shared/schemaJson";
+import { LinearService } from "./linear/Services/LinearService.ts";
 
 /**
  * ServerShape - Service API for server lifecycle control.
@@ -101,7 +102,7 @@ export interface ServerShape {
 /**
  * Server - Service tag for HTTP/WebSocket lifecycle management.
  */
-export class Server extends ServiceMap.Service<Server, ServerShape>()("t3/wsServer/Server") {}
+export class Server extends ServiceMap.Service<Server, ServerShape>()("daize/wsServer/Server") {}
 
 const isServerNotRunningError = (error: Error): boolean => {
   const maybeCode = (error as NodeJS.ErrnoException).code;
@@ -157,6 +158,17 @@ function toPosixRelativePath(input: string): string {
   return input.replaceAll("\\", "/");
 }
 
+function toClientErrorMessage(cause: Cause.Cause<unknown>): string {
+  const squashed = Cause.squash(cause);
+  if (squashed instanceof Error) {
+    return squashed.message;
+  }
+  if (typeof squashed === "string") {
+    return squashed;
+  }
+  return Cause.pretty(cause);
+}
+
 function resolveWorkspaceWritePath(params: {
   workspaceRoot: string;
   relativePath: string;
@@ -208,7 +220,8 @@ export type ServerCoreRuntimeServices =
   | CheckpointDiffQuery
   | OrchestrationReactor
   | ProviderService
-  | ProviderHealth;
+  | ProviderHealth
+  | LinearService;
 
 export type ServerRuntimeServices =
   | ServerCoreRuntimeServices
@@ -254,6 +267,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   const terminalManager = yield* TerminalManager;
   const keybindingsManager = yield* Keybindings;
   const providerHealth = yield* ProviderHealth;
+  const linearService = yield* LinearService;
   const git = yield* GitCore;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -781,6 +795,22 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         return yield* openInEditor(body);
       }
 
+      case WS_METHODS.linearGetConnection:
+        return yield* linearService.getConnection();
+
+      case WS_METHODS.linearConnect: {
+        const body = stripRequestTag(request.body);
+        return yield* linearService.connect(body);
+      }
+
+      case WS_METHODS.linearDisconnect:
+        return yield* linearService.disconnect();
+
+      case WS_METHODS.linearListMyIssues: {
+        const body = stripRequestTag(request.body);
+        return yield* linearService.listMyIssues(body);
+      }
+
       case WS_METHODS.gitStatus: {
         const body = stripRequestTag(request.body);
         return yield* gitManager.status(body);
@@ -919,7 +949,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
     if (Exit.isFailure(result)) {
       return yield* sendWsResponse({
         id: request.success.id,
-        error: { message: Cause.pretty(result.cause) },
+        error: { message: toClientErrorMessage(result.cause) },
       });
     }
 

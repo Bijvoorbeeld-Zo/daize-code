@@ -24,6 +24,14 @@ import type {
   ProjectWriteFileInput,
   ProjectWriteFileResult,
 } from "./project";
+import type {
+  LinearConnectInput,
+  LinearConnectResult,
+  LinearDisconnectResult,
+  LinearGetConnectionResult,
+  LinearListIssuesInput,
+  LinearListIssuesResult,
+} from "./linear";
 import type { ServerConfig } from "./server";
 import type {
   TerminalClearInput,
@@ -132,6 +140,12 @@ export interface NativeApi {
   shell: {
     openInEditor: (cwd: string, editor: EditorId) => Promise<void>;
     openExternal: (url: string) => Promise<void>;
+  };
+  linear: {
+    getConnection: () => Promise<LinearGetConnectionResult>;
+    connect: (input: LinearConnectInput) => Promise<LinearConnectResult>;
+    disconnect: () => Promise<LinearDisconnectResult>;
+    listMyIssues: (input?: LinearListIssuesInput) => Promise<LinearListIssuesResult>;
   };
   git: {
     // Existing branch/worktree API

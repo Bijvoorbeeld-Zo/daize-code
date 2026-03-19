@@ -3,11 +3,14 @@ import path from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, FileSystem, Layer } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
+import { FetchHttpClient } from "effect/unstable/http";
 
 import { CheckpointDiffQueryLive } from "./checkpointing/Layers/CheckpointDiffQuery";
 import { CheckpointStoreLive } from "./checkpointing/Layers/CheckpointStore";
 import { ServerConfig } from "./config";
+import { LinearServiceLive } from "./linear/Layers/LinearService";
 import { OrchestrationCommandReceiptRepositoryLive } from "./persistence/Layers/OrchestrationCommandReceipts";
+import { LinearIntegrationRepositoryLive } from "./persistence/Layers/LinearIntegration";
 import { OrchestrationEventStoreLive } from "./persistence/Layers/OrchestrationEventStore";
 import { ProviderSessionRuntimeRepositoryLive } from "./persistence/Layers/ProviderSessionRuntime";
 import { OrchestrationEngineLive } from "./orchestration/Layers/OrchestrationEngine";
@@ -125,7 +128,8 @@ export function makeServerRuntimeServicesLayer() {
     orchestrationReactorLayer,
     gitCoreLayer,
     gitManagerLayer,
+    LinearServiceLive.pipe(Layer.provide(LinearIntegrationRepositoryLive)),
     terminalLayer,
     KeybindingsLive,
-  ).pipe(Layer.provideMerge(NodeServices.layer));
+  ).pipe(Layer.provideMerge(NodeServices.layer), Layer.provideMerge(FetchHttpClient.layer));
 }

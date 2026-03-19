@@ -1,4 +1,4 @@
-import { type MessageId, type TurnId } from "@t3tools/contracts";
+import { type MessageId, type TurnId } from "@daize/contracts";
 import {
   memo,
   useCallback,

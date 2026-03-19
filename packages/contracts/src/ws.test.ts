@@ -73,6 +73,23 @@ it.effect("accepts git.preparePullRequestThread requests", () =>
   }),
 );
 
+it.effect("accepts linear.listMyIssues requests", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeWebSocketRequest({
+      id: "req-linear-1",
+      body: {
+        _tag: WS_METHODS.linearListMyIssues,
+        refresh: true,
+      },
+    });
+
+    assert.strictEqual(parsed.body._tag, WS_METHODS.linearListMyIssues);
+    if (parsed.body._tag === WS_METHODS.linearListMyIssues) {
+      assert.strictEqual(parsed.body.refresh, true);
+    }
+  }),
+);
+
 it.effect("accepts typed websocket push envelopes with sequence", () =>
   Effect.gen(function* () {
     const parsed = yield* decodeWsResponse({

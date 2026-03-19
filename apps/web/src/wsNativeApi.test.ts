@@ -14,7 +14,7 @@ import {
   WS_METHODS,
   type WsPush,
   type ServerProviderStatus,
-} from "@t3tools/contracts";
+} from "@daize/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const requestMock = vi.fn<(...args: Array<unknown>) => Promise<unknown>>();
@@ -125,7 +125,7 @@ describe("wsNativeApi", () => {
     const listener = vi.fn();
     onServerWelcome(listener);
 
-    const payload = { cwd: "/tmp/workspace", projectName: "t3-code" };
+    const payload = { cwd: "/tmp/workspace", projectName: "daize-code" };
     emitPush(WS_CHANNELS.serverWelcome, payload);
 
     expect(listener).toHaveBeenCalledTimes(1);
@@ -147,7 +147,7 @@ describe("wsNativeApi", () => {
 
     emitPush(WS_CHANNELS.serverWelcome, {
       cwd: "/tmp/workspace",
-      projectName: "t3-code",
+      projectName: "daize-code",
       bootstrapProjectId: ProjectId.makeUnsafe("project-1"),
       bootstrapThreadId: ThreadId.makeUnsafe("thread-1"),
     });
@@ -156,7 +156,7 @@ describe("wsNativeApi", () => {
     expect(listener).toHaveBeenCalledWith(
       expect.objectContaining({
         cwd: "/tmp/workspace",
-        projectName: "t3-code",
+        projectName: "daize-code",
         bootstrapProjectId: "project-1",
         bootstrapThreadId: "thread-1",
       }),
@@ -171,13 +171,13 @@ describe("wsNativeApi", () => {
     onServerWelcome(listener);
 
     emitPush(WS_CHANNELS.serverWelcome, { cwd: "/tmp/one", projectName: "one" });
-    emitPush(WS_CHANNELS.serverWelcome, { cwd: "/tmp/workspace", projectName: "t3-code" });
+    emitPush(WS_CHANNELS.serverWelcome, { cwd: "/tmp/workspace", projectName: "daize-code" });
 
     expect(listener).toHaveBeenCalledTimes(2);
     expect(listener).toHaveBeenLastCalledWith(
       expect.objectContaining({
         cwd: "/tmp/workspace",
-        projectName: "t3-code",
+        projectName: "daize-code",
       }),
     );
   });
@@ -279,6 +279,34 @@ describe("wsNativeApi", () => {
     expect(onTerminalEvent).toHaveBeenCalledWith(terminalEvent);
     expect(onDomainEvent).toHaveBeenCalledTimes(1);
     expect(onDomainEvent).toHaveBeenCalledWith(orchestrationEvent);
+  });
+
+  it("routes Linear RPC calls through the websocket transport", async () => {
+    const { createWsNativeApi } = await import("./wsNativeApi");
+
+    const api = createWsNativeApi();
+    requestMock.mockResolvedValueOnce({
+      connection: {
+        status: "connected",
+        workspaceName: null,
+        viewerName: "Jane Doe",
+        viewerEmail: "jane@example.com",
+        lastSyncAt: "2026-03-19T10:00:00.000Z",
+        message: null,
+      },
+    });
+    requestMock.mockResolvedValueOnce({
+      issues: [],
+      syncedAt: "2026-03-19T10:00:00.000Z",
+    });
+
+    await api.linear.getConnection();
+    await api.linear.listMyIssues();
+
+    expect(requestMock).toHaveBeenNthCalledWith(1, WS_METHODS.linearGetConnection, {});
+    expect(requestMock).toHaveBeenNthCalledWith(2, WS_METHODS.linearListMyIssues, {
+      refresh: false,
+    });
   });
 
   it("wraps orchestration dispatch commands in the command envelope", async () => {

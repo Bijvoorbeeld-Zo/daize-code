@@ -133,6 +133,7 @@ const buildCmd = Command.make(
       yield* runCommand(
         ChildProcess.make({
           cwd: serverDir,
+          stdin: "inherit",
           stdout: config.verbose ? "inherit" : "ignore",
           stderr: "inherit",
           // Windows needs shell mode to resolve .cmd shims (e.g. bun.cmd).
@@ -228,6 +229,7 @@ const publishCmd = Command.make(
             yield* runCommand(
               ChildProcess.make("npm", [...args], {
                 cwd: serverDir,
+                stdin: "inherit",
                 stdout: config.verbose ? "inherit" : "ignore",
                 stderr: "inherit",
                 // Windows needs shell mode to resolve .cmd shims.

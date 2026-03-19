@@ -1,8 +1,8 @@
 # Keybindings
 
-T3 Code reads keybindings from:
+Daize reads keybindings from:
 
-- `~/.t3/keybindings.json`
+- `~/.daize/keybindings.json`
 
 The file must be a JSON array of rules:
 

@@ -7,7 +7,7 @@ import {
   WS_CHANNELS,
   WS_METHODS,
   type WsWelcomePayload,
-} from "@t3tools/contracts";
+} from "@daize/contracts";
 
 import { showContextMenuFallback } from "./contextMenuFallback";
 import { WsTransport } from "./wsTransport";
@@ -131,6 +131,15 @@ export function createWsNativeApi(): NativeApi {
         // Avoid false negatives and let the browser handle popup policy.
         window.open(url, "_blank", "noopener,noreferrer");
       },
+    },
+    linear: {
+      getConnection: () => transport.request(WS_METHODS.linearGetConnection, {}),
+      connect: (input) => transport.request(WS_METHODS.linearConnect, input),
+      disconnect: () => transport.request(WS_METHODS.linearDisconnect, {}),
+      listMyIssues: (input) =>
+        transport.request(WS_METHODS.linearListMyIssues, {
+          refresh: input?.refresh ?? false,
+        }),
     },
     git: {
       pull: (input) => transport.request(WS_METHODS.gitPull, input),

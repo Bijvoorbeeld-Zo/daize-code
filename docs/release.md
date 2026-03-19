@@ -14,8 +14,10 @@ This document covers how to run desktop releases from one tag, first without sig
 - Publishes one GitHub Release with all produced files.
   - Versions with a suffix after `X.Y.Z` (for example `1.2.3-alpha.1`) are published as GitHub prereleases.
   - Only plain `X.Y.Z` releases are marked as the repository's latest release.
+- Publishes the CLI package (`apps/server`, npm package `@daize.ai/cli`) with OIDC trusted publishing.
+  - Stable releases publish to npm dist-tag `latest`.
+  - Prereleases publish to npm dist-tag `next`.
 - Includes Electron auto-update metadata (for example `latest*.yml` and `*.blockmap`) in release assets.
-- Publishes the CLI package (`apps/server`, npm package `t3`) with OIDC trusted publishing.
 - Signing is optional and auto-detected per platform from secrets.
 
 ## Desktop auto-update notes
@@ -27,10 +29,10 @@ This document covers how to run desktop releases from one tag, first without sig
   - The desktop UI shows a rocket update button when an update is available; click once to download, click again after download to restart/install.
 - Provider: GitHub Releases (`provider: github`) configured at build time.
 - Repository slug source:
-  - `T3CODE_DESKTOP_UPDATE_REPOSITORY` (format `owner/repo`), if set.
+  - `DAIZE_DESKTOP_UPDATE_REPOSITORY` (format `owner/repo`), if set.
   - otherwise `GITHUB_REPOSITORY` from GitHub Actions.
 - Temporary private-repo auth workaround:
-  - set `T3CODE_DESKTOP_UPDATE_GITHUB_TOKEN` (or `GH_TOKEN`) in the desktop app runtime environment.
+  - set `DAIZE_DESKTOP_UPDATE_GITHUB_TOKEN` (or `GH_TOKEN`) in the desktop app runtime environment.
   - the app forwards it as an `Authorization: Bearer <token>` request header for updater HTTP calls.
 - Required release assets for updater:
   - platform installers (`.exe`, `.dmg`, `.AppImage`, plus macOS `.zip` for Squirrel.Mac update payloads)
@@ -42,12 +44,12 @@ This document covers how to run desktop releases from one tag, first without sig
 
 ## 0) npm OIDC trusted publishing setup (CLI)
 
-The workflow publishes the CLI with `bun publish` from `apps/server` after bumping
+The workflow publishes the CLI with `npm publish` from `apps/server` after bumping
 the package version to the release tag version.
 
 Checklist:
 
-1. Confirm npm org/user owns package `t3` (or rename package first if needed).
+1. Confirm npm org/user owns package `@daize.ai/cli` (or rename package first if needed).
 2. In npm package settings, configure Trusted Publisher:
    - Provider: GitHub Actions
    - Repository: this repo
@@ -57,7 +59,7 @@ Checklist:
 4. Create release tag `vX.Y.Z` and push; workflow will:
    - set `apps/server/package.json` version to `X.Y.Z`
    - build web + server
-   - run `bun publish --access public`
+   - run `npm publish --access public`
 
 ## 1) Dry-run release without signing
 

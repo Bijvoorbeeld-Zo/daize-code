@@ -8,7 +8,7 @@
  */
 import { Config, Data, Effect, FileSystem, Layer, Option, Path, Schema, ServiceMap } from "effect";
 import { Command, Flag } from "effect/unstable/cli";
-import { NetService } from "@t3tools/shared/Net";
+import { NetService } from "@daize/shared/Net";
 import {
   DEFAULT_PORT,
   resolveStaticDir,
@@ -68,7 +68,7 @@ export interface CliConfigShape {
  * CliConfig - Service tag for startup CLI/runtime helpers.
  */
 export class CliConfig extends ServiceMap.Service<CliConfig, CliConfigShape>()(
-  "t3/main/CliConfig",
+  "daize/main/CliConfig",
 ) {
   static readonly layer = Layer.effect(
     CliConfig,
@@ -88,7 +88,7 @@ export class CliConfig extends ServiceMap.Service<CliConfig, CliConfigShape>()(
 }
 
 const CliEnvConfig = Config.all({
-  mode: Config.string("T3CODE_MODE").pipe(
+  mode: Config.string("DAIZE_MODE").pipe(
     Config.option,
     Config.map(
       Option.match<RuntimeMode, string>({
@@ -97,26 +97,23 @@ const CliEnvConfig = Config.all({
       }),
     ),
   ),
-  port: Config.port("T3CODE_PORT").pipe(Config.option, Config.map(Option.getOrUndefined)),
-  host: Config.string("T3CODE_HOST").pipe(Config.option, Config.map(Option.getOrUndefined)),
-  stateDir: Config.string("T3CODE_STATE_DIR").pipe(
-    Config.option,
-    Config.map(Option.getOrUndefined),
-  ),
+  port: Config.port("DAIZE_PORT").pipe(Config.option, Config.map(Option.getOrUndefined)),
+  host: Config.string("DAIZE_HOST").pipe(Config.option, Config.map(Option.getOrUndefined)),
+  stateDir: Config.string("DAIZE_STATE_DIR").pipe(Config.option, Config.map(Option.getOrUndefined)),
   devUrl: Config.url("VITE_DEV_SERVER_URL").pipe(Config.option, Config.map(Option.getOrUndefined)),
-  noBrowser: Config.boolean("T3CODE_NO_BROWSER").pipe(
+  noBrowser: Config.boolean("DAIZE_NO_BROWSER").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  authToken: Config.string("T3CODE_AUTH_TOKEN").pipe(
+  authToken: Config.string("DAIZE_AUTH_TOKEN").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  autoBootstrapProjectFromCwd: Config.boolean("T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD").pipe(
+  autoBootstrapProjectFromCwd: Config.boolean("DAIZE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  logWebSocketEvents: Config.boolean("T3CODE_LOG_WS_EVENTS").pipe(
+  logWebSocketEvents: Config.boolean("DAIZE_LOG_WS_EVENTS").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
@@ -262,7 +259,7 @@ const makeServerProgram = (input: CliInput) =>
         ? `http://${formatHostForUrl(config.host)}:${config.port}`
         : localUrl;
     const { authToken, devUrl, ...safeConfig } = config;
-    yield* Effect.logInfo("T3 Code running", {
+    yield* Effect.logInfo("Daize running", {
       ...safeConfig,
       devUrl: devUrl?.toString(),
       authEnabled: Boolean(authToken),
@@ -300,7 +297,7 @@ const hostFlag = Flag.string("host").pipe(
   Flag.optional,
 );
 const stateDirFlag = Flag.string("state-dir").pipe(
-  Flag.withDescription("State directory path (equivalent to T3CODE_STATE_DIR)."),
+  Flag.withDescription("State directory path (equivalent to DAIZE_STATE_DIR)."),
   Flag.optional,
 );
 const devUrlFlag = Flag.string("dev-url").pipe(
@@ -325,13 +322,13 @@ const autoBootstrapProjectFromCwdFlag = Flag.boolean("auto-bootstrap-project-fro
 );
 const logWebSocketEventsFlag = Flag.boolean("log-websocket-events").pipe(
   Flag.withDescription(
-    "Emit server-side logs for outbound WebSocket push traffic (equivalent to T3CODE_LOG_WS_EVENTS).",
+    "Emit server-side logs for outbound WebSocket push traffic (equivalent to DAIZE_LOG_WS_EVENTS).",
   ),
   Flag.withAlias("log-ws-events"),
   Flag.optional,
 );
 
-export const t3Cli = Command.make("t3", {
+export const t3Cli = Command.make("daize", {
   mode: modeFlag,
   port: portFlag,
   host: hostFlag,
@@ -342,6 +339,6 @@ export const t3Cli = Command.make("t3", {
   autoBootstrapProjectFromCwd: autoBootstrapProjectFromCwdFlag,
   logWebSocketEvents: logWebSocketEventsFlag,
 }).pipe(
-  Command.withDescription("Run the T3 Code server."),
+  Command.withDescription("Run the Daize server."),
   Command.withHandler((input) => Effect.scoped(makeServerProgram(input))),
 );

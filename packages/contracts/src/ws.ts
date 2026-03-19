@@ -37,6 +37,7 @@ import { KeybindingRule } from "./keybindings";
 import { ProjectSearchEntriesInput, ProjectWriteFileInput } from "./project";
 import { OpenInEditorInput } from "./editor";
 import { ServerConfigUpdatedPayload } from "./server";
+import { LinearConnectInput, LinearListIssuesInput } from "./linear";
 
 // ── WebSocket RPC Method Names ───────────────────────────────────────
 
@@ -50,6 +51,12 @@ export const WS_METHODS = {
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
+
+  // Linear methods
+  linearGetConnection: "linear.getConnection",
+  linearConnect: "linear.connect",
+  linearDisconnect: "linear.disconnect",
+  linearListMyIssues: "linear.listMyIssues",
 
   // Git methods
   gitPull: "git.pull",
@@ -114,6 +121,12 @@ const WebSocketRequestBody = Schema.Union([
 
   // Shell methods
   tagRequestBody(WS_METHODS.shellOpenInEditor, OpenInEditorInput),
+
+  // Linear methods
+  tagRequestBody(WS_METHODS.linearGetConnection, Schema.Struct({})),
+  tagRequestBody(WS_METHODS.linearConnect, LinearConnectInput),
+  tagRequestBody(WS_METHODS.linearDisconnect, Schema.Struct({})),
+  tagRequestBody(WS_METHODS.linearListMyIssues, LinearListIssuesInput),
 
   // Git methods
   tagRequestBody(WS_METHODS.gitPull, GitPullInput),

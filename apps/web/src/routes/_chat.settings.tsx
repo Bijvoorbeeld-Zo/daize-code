@@ -1,14 +1,24 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
-import { type ProviderKind, DEFAULT_GIT_TEXT_GENERATION_MODEL } from "@t3tools/contracts";
-import { getModelOptions, normalizeModelSlug } from "@t3tools/shared/model";
+import {
+  type LinearConnectionStatus,
+  type ProviderKind,
+  DEFAULT_GIT_TEXT_GENERATION_MODEL,
+} from "@daize/contracts";
+import { getModelOptions, normalizeModelSlug } from "@daize/shared/model";
 import { getAppModelOptions, MAX_CUSTOM_MODEL_LENGTH, useAppSettings } from "../appSettings";
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
 import { isElectron } from "../env";
 import { useTheme } from "../hooks/useTheme";
+import {
+  linearConnectMutationOptions,
+  linearConnectionQueryOptions,
+  linearDisconnectMutationOptions,
+} from "../lib/linearReactQuery";
 import { serverConfigQueryOptions } from "../lib/serverReactQuery";
 import { ensureNativeApi } from "../nativeApi";
+import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import {
@@ -62,6 +72,26 @@ const TIMESTAMP_FORMAT_LABELS = {
   "24-hour": "24-hour",
 } as const;
 
+const LINEAR_STATUS_LABELS: Record<LinearConnectionStatus, string> = {
+  connected: "Connected",
+  disconnected: "Not connected",
+  error: "Fetch failed",
+  invalid: "Invalid token",
+} as const;
+
+function linearStatusVariant(status: LinearConnectionStatus): "default" | "error" | "success" {
+  switch (status) {
+    case "connected":
+      return "success";
+    case "invalid":
+    case "error":
+      return "error";
+    case "disconnected":
+    default:
+      return "default";
+  }
+}
+
 function getCustomModelsForProvider(
   settings: ReturnType<typeof useAppSettings>["settings"],
   provider: ProviderKind,
@@ -95,9 +125,15 @@ function patchCustomModels(provider: ProviderKind, models: string[]) {
 function SettingsRouteView() {
   const { theme, setTheme, resolvedTheme } = useTheme();
   const { settings, defaults, updateSettings } = useAppSettings();
+  const queryClient = useQueryClient();
   const serverConfigQuery = useQuery(serverConfigQueryOptions());
+  const linearConnectionQuery = useQuery(linearConnectionQueryOptions());
+  const linearConnectMutation = useMutation(linearConnectMutationOptions({ queryClient }));
+  const linearDisconnectMutation = useMutation(linearDisconnectMutationOptions({ queryClient }));
   const [isOpeningKeybindings, setIsOpeningKeybindings] = useState(false);
   const [openKeybindingsError, setOpenKeybindingsError] = useState<string | null>(null);
+  const [linearApiKeyInput, setLinearApiKeyInput] = useState("");
+  const [linearConnectError, setLinearConnectError] = useState<string | null>(null);
   const [customModelInputByProvider, setCustomModelInputByProvider] = useState<
     Record<ProviderKind, string>
   >({
@@ -111,6 +147,14 @@ function SettingsRouteView() {
   const codexHomePath = settings.codexHomePath;
   const keybindingsConfigPath = serverConfigQuery.data?.keybindingsConfigPath ?? null;
   const availableEditors = serverConfigQuery.data?.availableEditors;
+  const linearConnection = linearConnectionQuery.data?.connection ?? {
+    status: "disconnected",
+    workspaceName: null,
+    viewerName: null,
+    viewerEmail: null,
+    lastSyncAt: null,
+    message: null,
+  };
 
   const gitTextGenerationModelOptions = getAppModelOptions(
     "codex",
@@ -210,6 +254,29 @@ function SettingsRouteView() {
     [settings, updateSettings],
   );
 
+  const handleLinearConnect = useCallback(() => {
+    const trimmedApiKey = linearApiKeyInput.trim();
+    if (trimmedApiKey.length === 0) {
+      setLinearConnectError("Enter a Linear API key.");
+      return;
+    }
+
+    setLinearConnectError(null);
+    linearConnectMutation.mutate(trimmedApiKey, {
+      onSuccess: () => {
+        setLinearApiKeyInput("");
+      },
+      onError: (error) => {
+        setLinearConnectError(error instanceof Error ? error.message : "Unable to connect Linear.");
+      },
+    });
+  }, [linearApiKeyInput, linearConnectMutation]);
+
+  const handleLinearDisconnect = useCallback(() => {
+    setLinearConnectError(null);
+    linearDisconnectMutation.mutate();
+  }, [linearDisconnectMutation]);
+
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
@@ -234,7 +301,7 @@ function SettingsRouteView() {
               <div className="mb-4">
                 <h2 className="text-sm font-medium text-foreground">Appearance</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Choose how T3 Code looks across the app.
+                  Choose how Daize looks across the app.
                 </p>
               </div>
 
@@ -752,6 +819,102 @@ function SettingsRouteView() {
                   </p>
                 </div>
                 <code className="text-xs font-medium text-muted-foreground">{APP_VERSION}</code>
+              </div>
+            </section>
+            <section className="rounded-2xl border border-border bg-card p-5">
+              <div className="mb-4">
+                <h2 className="text-sm font-medium text-foreground">Linear</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Connect a Linear personal API key to show your open assigned issues on the Tasks
+                  page.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <Alert variant={linearStatusVariant(linearConnection.status)}>
+                  <AlertTitle>{LINEAR_STATUS_LABELS[linearConnection.status]}</AlertTitle>
+                  <AlertDescription>
+                    {linearConnectionQuery.isLoading ? (
+                      <p>Checking saved Linear connection…</p>
+                    ) : linearConnection.message ? (
+                      <p>{linearConnection.message}</p>
+                    ) : linearConnection.status === "connected" ? (
+                      <p>Linear is ready for the Tasks page.</p>
+                    ) : (
+                      <p>No Linear API key is connected yet.</p>
+                    )}
+                    {(linearConnection.viewerName || linearConnection.viewerEmail) && (
+                      <p className="text-xs text-foreground/80">
+                        {linearConnection.viewerName ?? "Unknown user"}
+                        {linearConnection.viewerEmail ? ` · ${linearConnection.viewerEmail}` : ""}
+                      </p>
+                    )}
+                    {linearConnection.lastSyncAt ? (
+                      <p className="text-xs">Last sync: {linearConnection.lastSyncAt}</p>
+                    ) : null}
+                  </AlertDescription>
+                </Alert>
+
+                <label htmlFor="linear-api-key" className="block space-y-1">
+                  <span className="text-xs font-medium text-foreground">
+                    Linear personal API key
+                  </span>
+                  <Input
+                    id="linear-api-key"
+                    type="password"
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder="lin_api_..."
+                    value={linearApiKeyInput}
+                    onChange={(event) => {
+                      setLinearApiKeyInput(event.target.value);
+                      if (linearConnectError) {
+                        setLinearConnectError(null);
+                      }
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return;
+                      event.preventDefault();
+                      handleLinearConnect();
+                    }}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Stored in the app state on this machine. Not yet backed by the OS keychain.
+                  </span>
+                </label>
+
+                {linearConnectError ? (
+                  <p className="text-xs text-destructive">{linearConnectError}</p>
+                ) : null}
+
+                {linearConnectionQuery.error ? (
+                  <p className="text-xs text-destructive">
+                    {linearConnectionQuery.error instanceof Error
+                      ? linearConnectionQuery.error.message
+                      : "Unable to load Linear connection state."}
+                  </p>
+                ) : null}
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    onClick={handleLinearConnect}
+                    disabled={
+                      linearConnectMutation.isPending || linearApiKeyInput.trim().length === 0
+                    }
+                  >
+                    {linearConnectMutation.isPending ? "Connecting..." : "Connect"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleLinearDisconnect}
+                    disabled={
+                      linearDisconnectMutation.isPending ||
+                      linearConnection.status === "disconnected"
+                    }
+                  >
+                    {linearDisconnectMutation.isPending ? "Disconnecting..." : "Disconnect"}
+                  </Button>
+                </div>
               </div>
             </section>
           </div>

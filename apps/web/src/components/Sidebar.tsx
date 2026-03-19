@@ -3,6 +3,7 @@ import {
   ChevronRightIcon,
   FolderIcon,
   GitPullRequestIcon,
+  ListTodoIcon,
   PlusIcon,
   RocketIcon,
   SettingsIcon,
@@ -33,7 +34,7 @@ import {
   ThreadId,
   type GitStatusResult,
   type ResolvedKeybindingsConfig,
-} from "@t3tools/contracts";
+} from "@daize/contracts";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { useAppSettings } from "../appSettings";
@@ -265,7 +266,9 @@ export default function Sidebar() {
     (store) => store.clearProjectDraftThreadById,
   );
   const navigate = useNavigate();
-  const isOnSettings = useLocation({ select: (loc) => loc.pathname === "/settings" });
+  const pathname = useLocation({ select: (loc) => loc.pathname });
+  const isOnSettings = pathname === "/settings";
+  const isOnTasks = pathname === "/tasks";
   const { settings: appSettings } = useAppSettings();
   const { handleNewThread } = useHandleNewThread();
   const routeThreadId = useParams({
@@ -1197,6 +1200,21 @@ export default function Sidebar() {
       )}
 
       <SidebarContent className="gap-0">
+        <SidebarGroup className="px-2 pt-2 pb-0">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                size="sm"
+                isActive={isOnTasks}
+                className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground data-[active=true]:text-foreground"
+                onClick={() => void navigate({ to: "/tasks" })}
+              >
+                <ListTodoIcon className="size-3.5" />
+                <span className="text-xs">Tasks</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
         {showArm64IntelBuildWarning && arm64IntelBuildWarningDescription ? (
           <SidebarGroup className="px-2 pt-2 pb-0">
             <Alert variant="warning" className="rounded-2xl border-warning/40 bg-warning/8">
