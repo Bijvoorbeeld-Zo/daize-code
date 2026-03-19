@@ -143,11 +143,23 @@ const makeWithDatabase = (
             Effect.try({
               try: () => {
                 if (hasRows(statement)) {
-                  statement.setReturnArrays(true);
-                  // Safe to cast to array after we've setReturnArrays(true)
-                  return statement.all(...(params as any)) as unknown as ReadonlyArray<
-                    ReadonlyArray<unknown>
-                  >;
+                  if (
+                    "setReturnArrays" in statement &&
+                    typeof statement.setReturnArrays === "function"
+                  ) {
+                    statement.setReturnArrays(true);
+                    // Safe to cast to array after we've setReturnArrays(true)
+                    return statement.all(...(params as any)) as unknown as ReadonlyArray<
+                      ReadonlyArray<unknown>
+                    >;
+                  }
+
+                  const columns = statement.columns().map((column) => column.name);
+                  return statement
+                    .all(...(params as any))
+                    .map((row) =>
+                      columns.map((columnName) => (row as Record<string, unknown>)[columnName]),
+                    );
                 }
                 statement.run(...(params as any));
                 return [];
@@ -156,7 +168,11 @@ const makeWithDatabase = (
             }),
           (statement) =>
             Effect.sync(() => {
-              if (hasRows(statement)) {
+              if (
+                hasRows(statement) &&
+                "setReturnArrays" in statement &&
+                typeof statement.setReturnArrays === "function"
+              ) {
                 statement.setReturnArrays(false);
               }
             }),
