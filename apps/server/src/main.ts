@@ -259,7 +259,7 @@ const makeServerProgram = (input: CliInput) =>
         ? `http://${formatHostForUrl(config.host)}:${config.port}`
         : localUrl;
     const { authToken, devUrl, ...safeConfig } = config;
-    yield* Effect.logInfo("Daize running", {
+    yield* Effect.logInfo("Daize Code running", {
       ...safeConfig,
       devUrl: devUrl?.toString(),
       authEnabled: Boolean(authToken),
@@ -339,6 +339,6 @@ export const t3Cli = Command.make("daize", {
   autoBootstrapProjectFromCwd: autoBootstrapProjectFromCwdFlag,
   logWebSocketEvents: logWebSocketEventsFlag,
 }).pipe(
-  Command.withDescription("Run the Daize server."),
+  Command.withDescription("Run the Daize Code server."),
   Command.withHandler((input) => Effect.scoped(makeServerProgram(input))),
 );

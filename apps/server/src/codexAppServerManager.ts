@@ -406,7 +406,7 @@ export function buildCodexInitializeParams() {
   return {
     clientInfo: {
       name: "daize_desktop",
-      title: "Daize Desktop",
+      title: "Daize Code Desktop",
       version: "0.1.0",
     },
     capabilities: {

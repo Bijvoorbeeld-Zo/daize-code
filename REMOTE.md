@@ -1,10 +1,10 @@
 # Remote Access Setup
 
-Use this when you want to open Daize from another device (phone, tablet, another laptop).
+Use this when you want to open Daize Code from another device (phone, tablet, another laptop).
 
 ## CLI ↔ Env option map
 
-The Daize CLI accepts the following configuration options, available either as CLI flags or environment variables:
+The Daize Code CLI accepts the following configuration options, available either as CLI flags or environment variables:
 
 | CLI flag                | Env var               | Notes                              |
 | ----------------------- | --------------------- | ---------------------------------- |

@@ -137,5 +137,5 @@ export function isCodexCliVersionSupported(version: string): boolean {
 
 export function formatCodexCliUpgradeMessage(version: string | null): string {
   const versionLabel = version ? `v${version}` : "the installed version";
-  return `Codex CLI ${versionLabel} is too old for Daize. Upgrade to v${MINIMUM_CODEX_CLI_VERSION} or newer and restart Daize.`;
+  return `Codex CLI ${versionLabel} is too old for Daize Code. Upgrade to v${MINIMUM_CODEX_CLI_VERSION} or newer and restart Daize Code.`;
 }

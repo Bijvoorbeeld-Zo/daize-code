@@ -1,11 +1,11 @@
-# Daize
+# Daize Code
 
-Daize is a minimal web GUI for coding agents. Currently Codex-first, with Claude Code support coming soon.
+Daize Code is a minimal web GUI for coding agents. Currently Codex-first, with Claude Code support coming soon.
 
 ## How to use
 
 > [!WARNING]
-> You need to have [Codex CLI](https://github.com/openai/codex) installed and authorized for Daize to work.
+> You need to have [Codex CLI](https://github.com/openai/codex) installed and authorized for Daize Code to work.
 
 ```bash
 npx @daize.ai/cli

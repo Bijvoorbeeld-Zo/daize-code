@@ -57,7 +57,7 @@ const STATE_DIR =
 const DESKTOP_SCHEME = "daize";
 const ROOT_DIR = Path.resolve(__dirname, "../../..");
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
-const APP_DISPLAY_NAME = isDevelopment ? "Daize (Dev)" : "Daize (Alpha)";
+const APP_DISPLAY_NAME = isDevelopment ? "Daize Code (Dev)" : "Daize Code (Alpha)";
 const APP_USER_MODEL_ID = "com.daize.daize";
 const USER_DATA_DIR_NAME = isDevelopment ? "daize-dev" : "daize";
 const LEGACY_USER_DATA_DIR_NAME = isDevelopment ? "Daize (Dev)" : "Daize (Alpha)";
@@ -436,7 +436,7 @@ function handleFatalStartupError(stage: string, error: unknown): void {
   console.error(`[desktop] fatal startup error (${stage})`, error);
   if (!isQuitting) {
     isQuitting = true;
-    dialog.showErrorBox("Daize failed to start", `Stage: ${stage}\n${message}${detail}`);
+    dialog.showErrorBox("Daize Code failed to start", `Stage: ${stage}\n${message}${detail}`);
   }
   stopBackend();
   restoreStdIoCapture?.();
@@ -541,7 +541,7 @@ async function checkForUpdatesFromMenu(): Promise<void> {
     void dialog.showMessageBox({
       type: "info",
       title: "You're up to date!",
-      message: `Daize ${updateState.currentVersion} is currently the newest version available.`,
+      message: `Daize Code ${updateState.currentVersion} is currently the newest version available.`,
       buttons: ["OK"],
     });
   } else if (updateState.status === "error") {

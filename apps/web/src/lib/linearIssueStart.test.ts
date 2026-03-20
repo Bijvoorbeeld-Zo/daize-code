@@ -46,7 +46,7 @@ describe("buildLinearIssueStartPrompt", () => {
     const prompt = buildLinearIssueStartPrompt({ issue, linkedProject });
 
     expect(prompt).toContain("Implement Linear issue DAI-28: Auto label");
-    expect(prompt).toContain("- Target Daize project: server");
+    expect(prompt).toContain("- Target Daize Code project: server");
     expect(prompt).toContain("- Workspace path: /workspace/server");
     expect(prompt).toContain("- Run bun fmt, bun lint, and bun typecheck before finishing.");
   });

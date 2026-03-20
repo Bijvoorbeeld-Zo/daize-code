@@ -213,7 +213,7 @@ function TasksRouteView() {
       toastManager.add({
         type: "warning",
         title: "Task cannot be started",
-        description: "Link this Linear project to a Daize project in Settings first.",
+        description: "Link this Linear project to a Daize Code project in Settings first.",
       });
       return;
     }

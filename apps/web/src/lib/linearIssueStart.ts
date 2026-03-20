@@ -27,7 +27,7 @@ export function buildLinearIssueStartPrompt(input: {
     `- Linear project: ${issue.project?.name ?? "Not available"}`,
     `- Status: ${issue.status.name}`,
     `- Assignee: ${issue.assigneeName ?? "Not available"}`,
-    `- Target Daize project: ${linkedProject.name}`,
+    `- Target Daize Code project: ${linkedProject.name}`,
     `- Workspace path: ${linkedProject.cwd}`,
     "",
     "Instructions",

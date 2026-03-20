@@ -365,7 +365,7 @@ function SettingsRouteView() {
               <div className="mb-4">
                 <h2 className="text-sm font-medium text-foreground">Appearance</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Choose how Daize looks across the app.
+                  Choose how Daize Code looks across the app.
                 </p>
               </div>
 
@@ -1057,8 +1057,8 @@ function SettingsRouteView() {
                     <div className="border-b border-border px-3 py-2">
                       <p className="text-sm font-medium text-foreground">Project links</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Link each Daize project to one Linear project. The Tasks page uses this to
-                        show which workspace an issue belongs to.
+                        Link each Daize Code project to one Linear project. The Tasks page uses this
+                        to show which workspace an issue belongs to.
                       </p>
                     </div>
 

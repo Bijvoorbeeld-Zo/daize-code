@@ -1,6 +1,6 @@
 # Keybindings
 
-Daize reads keybindings from:
+Daize Code reads keybindings from:
 
 - `~/.daize/keybindings.json`
 
