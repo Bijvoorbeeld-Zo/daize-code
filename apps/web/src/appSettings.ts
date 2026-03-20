@@ -1,7 +1,12 @@
 import { useCallback } from "react";
 import { Option, Schema } from "effect";
 import { TrimmedNonEmptyString, type ProviderKind } from "@daize/contracts";
-import { getDefaultModel, getModelOptions, normalizeModelSlug } from "@daize/shared/model";
+import {
+  getDefaultModel,
+  getModelOptions,
+  inferProviderForModel,
+  normalizeModelSlug,
+} from "@daize/shared/model";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { EnvMode } from "./components/BranchToolbar.logic";
 
@@ -40,6 +45,7 @@ export const AppSettingsSchema = Schema.Struct({
   timestampFormat: TimestampFormat.pipe(withDefaults(() => DEFAULT_TIMESTAMP_FORMAT)),
   customCodexModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customClaudeModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
+  taskStartModel: Schema.optional(TrimmedNonEmptyString),
   textGenerationModel: Schema.optional(TrimmedNonEmptyString),
 });
 export type AppSettings = typeof AppSettingsSchema.Type;
@@ -154,6 +160,23 @@ export function resolveAppModelSelection(
     options.find((option) => option.slug === normalizedSelectedModel)?.slug ??
     getDefaultModel(provider)
   );
+}
+
+export function resolveTaskStartModelSelection(input: {
+  selectedModel: string | null | undefined;
+  projectModel: string | null | undefined;
+  customCodexModels: readonly string[];
+  customClaudeModels: readonly string[];
+}): { provider: ProviderKind; model: string } {
+  const projectProvider = inferProviderForModel(input.projectModel);
+  const provider = inferProviderForModel(input.selectedModel, projectProvider);
+  const model = resolveAppModelSelection(
+    provider,
+    provider === "claudeAgent" ? input.customClaudeModels : input.customCodexModels,
+    input.selectedModel ?? input.projectModel,
+  );
+
+  return { provider, model };
 }
 
 export function useAppSettings() {

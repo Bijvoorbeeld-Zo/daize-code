@@ -28,8 +28,11 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import {
   Select,
+  SelectGroup,
+  SelectGroupLabel,
   SelectItem,
   SelectPopup,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
@@ -92,6 +95,7 @@ const LINEAR_STATUS_LABELS: Record<LinearConnectionStatus, string> = {
 } as const;
 
 const UNLINKED_LINEAR_PROJECT_VALUE = "__unlinked__";
+const PROJECT_DEFAULT_TASK_START_MODEL_VALUE = "__project_default_task_start_model__";
 
 function linearStatusVariant(status: LinearConnectionStatus): "default" | "error" | "success" {
   switch (status) {
@@ -188,11 +192,25 @@ function SettingsRouteView() {
     settings.customCodexModels,
     settings.textGenerationModel,
   );
+  const taskStartCodexModelOptions = getAppModelOptions(
+    "codex",
+    settings.customCodexModels,
+    settings.taskStartModel,
+  );
+  const taskStartClaudeModelOptions = getAppModelOptions(
+    "claudeAgent",
+    settings.customClaudeModels,
+    settings.taskStartModel,
+  );
   const selectedGitTextGenerationModelLabel =
     gitTextGenerationModelOptions.find(
       (option) =>
         option.slug === (settings.textGenerationModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL),
     )?.name ?? settings.textGenerationModel;
+  const selectedTaskStartModelLabel =
+    taskStartCodexModelOptions.find((option) => option.slug === settings.taskStartModel)?.name ??
+    taskStartClaudeModelOptions.find((option) => option.slug === settings.taskStartModel)?.name ??
+    settings.taskStartModel;
 
   const openKeybindingsFile = useCallback(() => {
     if (!keybindingsConfigPath) return;
@@ -676,6 +694,78 @@ function SettingsRouteView() {
                     onClick={() =>
                       updateSettings({
                         textGenerationModel: defaults.textGenerationModel,
+                      })
+                    }
+                  >
+                    Restore default
+                  </Button>
+                </div>
+              ) : null}
+            </section>
+
+            <section className="rounded-2xl border border-border bg-card p-5">
+              <div className="mb-4">
+                <h2 className="text-sm font-medium text-foreground">Tasks</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Choose which model is used when starting a task from the Tasks page.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-4 rounded-lg border border-border bg-background px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-foreground">Task start model</p>
+                  <p className="text-xs text-muted-foreground">
+                    Leave this on project default to use the linked project model instead.
+                  </p>
+                </div>
+                <Select
+                  value={settings.taskStartModel ?? PROJECT_DEFAULT_TASK_START_MODEL_VALUE}
+                  onValueChange={(value) => {
+                    updateSettings({
+                      taskStartModel:
+                        !value || value === PROJECT_DEFAULT_TASK_START_MODEL_VALUE
+                          ? undefined
+                          : value,
+                    });
+                  }}
+                >
+                  <SelectTrigger className="w-full shrink-0 sm:w-56" aria-label="Task start model">
+                    <SelectValue>{selectedTaskStartModelLabel ?? "Project default"}</SelectValue>
+                  </SelectTrigger>
+                  <SelectPopup align="end">
+                    <SelectItem value={PROJECT_DEFAULT_TASK_START_MODEL_VALUE}>
+                      Project default
+                    </SelectItem>
+                    <SelectSeparator />
+                    <SelectGroup>
+                      <SelectGroupLabel>Codex</SelectGroupLabel>
+                      {taskStartCodexModelOptions.map((option) => (
+                        <SelectItem key={`task-start-codex:${option.slug}`} value={option.slug}>
+                          {option.name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                    <SelectSeparator />
+                    <SelectGroup>
+                      <SelectGroupLabel>Claude</SelectGroupLabel>
+                      {taskStartClaudeModelOptions.map((option) => (
+                        <SelectItem key={`task-start-claude:${option.slug}`} value={option.slug}>
+                          {option.name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectPopup>
+                </Select>
+              </div>
+
+              {settings.taskStartModel !== defaults.taskStartModel ? (
+                <div className="mt-3 flex justify-end">
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() =>
+                      updateSettings({
+                        taskStartModel: defaults.taskStartModel,
                       })
                     }
                   >

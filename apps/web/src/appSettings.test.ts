@@ -7,6 +7,7 @@ import {
   getAppModelOptions,
   normalizeCustomModelSlugs,
   resolveAppModelSelection,
+  resolveTaskStartModelSelection,
 } from "./appSettings";
 
 describe("normalizeCustomModelSlugs", () => {
@@ -76,6 +77,36 @@ describe("resolveAppModelSelection", () => {
   });
 });
 
+describe("resolveTaskStartModelSelection", () => {
+  it("falls back to the linked project model when no app-level task model is configured", () => {
+    expect(
+      resolveTaskStartModelSelection({
+        selectedModel: null,
+        projectModel: "claude-sonnet-4-6",
+        customCodexModels: [],
+        customClaudeModels: [],
+      }),
+    ).toEqual({
+      provider: "claudeAgent",
+      model: "claude-sonnet-4-6",
+    });
+  });
+
+  it("preserves saved custom task-start models", () => {
+    expect(
+      resolveTaskStartModelSelection({
+        selectedModel: "claude/custom-opus",
+        projectModel: "gpt-5.4",
+        customCodexModels: [],
+        customClaudeModels: ["claude/custom-opus"],
+      }),
+    ).toEqual({
+      provider: "claudeAgent",
+      model: "claude/custom-opus",
+    });
+  });
+});
+
 describe("timestamp format defaults", () => {
   it("defaults timestamp format to locale", () => {
     expect(DEFAULT_TIMESTAMP_FORMAT).toBe("locale");
@@ -110,6 +141,7 @@ describe("AppSettingsSchema", () => {
       timestampFormat: DEFAULT_TIMESTAMP_FORMAT,
       customCodexModels: [],
       customClaudeModels: [],
+      taskStartModel: undefined,
     });
   });
 });

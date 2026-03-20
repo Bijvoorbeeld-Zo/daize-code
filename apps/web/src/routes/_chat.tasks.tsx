@@ -2,10 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { DEFAULT_RUNTIME_MODE, type ThreadId } from "@daize/contracts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, createFileRoute } from "@tanstack/react-router";
-import { inferProviderForModel, resolveModelSlugForProvider } from "@daize/shared/model";
 import { PlayIcon, RefreshCwIcon } from "lucide-react";
 
-import { useAppSettings } from "../appSettings";
+import { resolveTaskStartModelSelection, useAppSettings } from "../appSettings";
 import { isElectron } from "../env";
 import {
   linearConnectionQueryOptions,
@@ -226,8 +225,12 @@ function TasksRouteView() {
 
     const createdAt = new Date().toISOString();
     const threadId = newThreadId();
-    const provider = inferProviderForModel(linkedProject.model);
-    const model = resolveModelSlugForProvider(provider, linkedProject.model);
+    const { provider, model } = resolveTaskStartModelSelection({
+      selectedModel: settings.taskStartModel,
+      projectModel: linkedProject.model,
+      customCodexModels: settings.customCodexModels,
+      customClaudeModels: settings.customClaudeModels,
+    });
     const prompt = buildLinearIssueStartPrompt({ issue, linkedProject });
 
     setStartingIssueId(issue.id);
