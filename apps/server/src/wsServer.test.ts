@@ -1276,7 +1276,7 @@ describe("WebSocket Server", () => {
     expect(installLinearMcpResponse.error).toBeUndefined();
     expect(installLinearMcpResponse.result).toEqual({
       configPath: expect.any(String),
-      changed: false,
+      changed: true,
       authStarted: true,
       browserOpened: false,
       authUrl: "https://mcp.linear.app/authorize?state=test-auth",
