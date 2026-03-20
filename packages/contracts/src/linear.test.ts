@@ -55,6 +55,11 @@ it.effect("decodes list issue results", () =>
           id: "issue-1",
           identifier: "ENG-123",
           title: "Hook up Linear tasks",
+          project: {
+            id: "project-1",
+            name: "Daize Launch",
+            icon: null,
+          },
           status: {
             name: "In Progress",
             color: "#f59e0b",
@@ -66,6 +71,7 @@ it.effect("decodes list issue results", () =>
     });
 
     assert.strictEqual(parsed.issues[0]?.identifier, "ENG-123");
+    assert.strictEqual(parsed.issues[0]?.project?.name, "Daize Launch");
     assert.strictEqual(parsed.issues[0]?.status.name, "In Progress");
   }),
 );

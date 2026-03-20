@@ -59,6 +59,11 @@ it.layer(NodeServices.layer)("LinearService", (it) => {
                       title: "Implement Linear tasks",
                       completedAt: null,
                       canceledAt: null,
+                      project: {
+                        id: "project-1",
+                        name: "Daize",
+                        icon: null,
+                      },
                       state: {
                         name: "In Progress",
                         color: "#f59e0b",
@@ -73,6 +78,7 @@ it.layer(NodeServices.layer)("LinearService", (it) => {
                       title: "Completed issue",
                       completedAt: "2026-03-19T09:00:00.000Z",
                       canceledAt: null,
+                      project: null,
                       state: {
                         name: "Done",
                         color: "#22c55e",
@@ -99,6 +105,7 @@ it.layer(NodeServices.layer)("LinearService", (it) => {
       assert.strictEqual(connectResult.connection.viewerEmail, "jane@example.com");
       assert.strictEqual(issuesResult.issues.length, 1);
       assert.strictEqual(issuesResult.issues[0]?.identifier, "ENG-123");
+      assert.strictEqual(issuesResult.issues[0]?.project?.name, "Daize");
       assert.strictEqual(requests.length, 2);
     }).pipe(
       Effect.provide(
