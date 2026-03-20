@@ -808,6 +808,9 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       case WS_METHODS.linearDisconnect:
         return yield* linearService.disconnect();
 
+      case WS_METHODS.linearListProjects:
+        return yield* linearService.listProjects();
+
       case WS_METHODS.linearListMyIssues: {
         const body = stripRequestTag(request.body);
         return yield* linearService.listMyIssues(body);

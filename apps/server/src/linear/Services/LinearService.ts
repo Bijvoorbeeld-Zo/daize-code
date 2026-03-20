@@ -5,6 +5,7 @@ import type {
   LinearGetConnectionResult,
   LinearListIssuesInput,
   LinearListIssuesResult,
+  LinearListProjectsResult,
 } from "@daize/contracts";
 import { ServiceMap } from "effect";
 import type { Effect } from "effect";
@@ -17,6 +18,7 @@ export interface LinearServiceShape {
     input: LinearConnectInput,
   ) => Effect.Effect<LinearConnectResult, LinearServiceError>;
   readonly disconnect: () => Effect.Effect<LinearDisconnectResult, LinearServiceError>;
+  readonly listProjects: () => Effect.Effect<LinearListProjectsResult, LinearServiceError>;
   readonly listMyIssues: (
     input: LinearListIssuesInput,
   ) => Effect.Effect<LinearListIssuesResult, LinearServiceError>;

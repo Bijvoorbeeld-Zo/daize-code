@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import {
   type LinearConnectionStatus,
+  type ProjectId,
   type ProviderKind,
   DEFAULT_GIT_TEXT_GENERATION_MODEL,
 } from "@daize/contracts";
@@ -15,9 +16,13 @@ import {
   linearConnectMutationOptions,
   linearConnectionQueryOptions,
   linearDisconnectMutationOptions,
+  linearProjectsQueryOptions,
+  linearQueryKeys,
 } from "../lib/linearReactQuery";
+import { newCommandId } from "../lib/utils";
 import { serverConfigQueryOptions } from "../lib/serverReactQuery";
 import { ensureNativeApi } from "../nativeApi";
+import { useStore } from "../store";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -79,6 +84,8 @@ const LINEAR_STATUS_LABELS: Record<LinearConnectionStatus, string> = {
   invalid: "Invalid token",
 } as const;
 
+const UNLINKED_LINEAR_PROJECT_VALUE = "__unlinked__";
+
 function linearStatusVariant(status: LinearConnectionStatus): "default" | "error" | "success" {
   switch (status) {
     case "connected":
@@ -126,14 +133,20 @@ function SettingsRouteView() {
   const { theme, setTheme, resolvedTheme } = useTheme();
   const { settings, defaults, updateSettings } = useAppSettings();
   const queryClient = useQueryClient();
+  const projects = useStore((store) => store.projects);
   const serverConfigQuery = useQuery(serverConfigQueryOptions());
   const linearConnectionQuery = useQuery(linearConnectionQueryOptions());
+  const linearProjectsQuery = useQuery({
+    ...linearProjectsQueryOptions(),
+    enabled: linearConnectionQuery.data?.connection.status === "connected",
+  });
   const linearConnectMutation = useMutation(linearConnectMutationOptions({ queryClient }));
   const linearDisconnectMutation = useMutation(linearDisconnectMutationOptions({ queryClient }));
   const [isOpeningKeybindings, setIsOpeningKeybindings] = useState(false);
   const [openKeybindingsError, setOpenKeybindingsError] = useState<string | null>(null);
   const [linearApiKeyInput, setLinearApiKeyInput] = useState("");
   const [linearConnectError, setLinearConnectError] = useState<string | null>(null);
+  const [updatingLinkedProjectId, setUpdatingLinkedProjectId] = useState<ProjectId | null>(null);
   const [customModelInputByProvider, setCustomModelInputByProvider] = useState<
     Record<ProviderKind, string>
   >({
@@ -276,6 +289,25 @@ function SettingsRouteView() {
     setLinearConnectError(null);
     linearDisconnectMutation.mutate();
   }, [linearDisconnectMutation]);
+
+  const handleLinearProjectLinkChange = useCallback(
+    async (projectId: ProjectId, nextLinearProjectId: string | null) => {
+      const api = ensureNativeApi();
+      setUpdatingLinkedProjectId(projectId);
+      try {
+        await api.orchestration.dispatchCommand({
+          type: "project.meta.update",
+          commandId: newCommandId(),
+          projectId,
+          linearProjectId: nextLinearProjectId,
+        });
+        await queryClient.invalidateQueries({ queryKey: linearQueryKeys.issues() });
+      } finally {
+        setUpdatingLinkedProjectId(null);
+      }
+    },
+    [queryClient],
+  );
 
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate">
@@ -915,6 +947,106 @@ function SettingsRouteView() {
                     {linearDisconnectMutation.isPending ? "Disconnecting..." : "Disconnect"}
                   </Button>
                 </div>
+
+                {linearConnection.status === "connected" ? (
+                  <div className="rounded-lg border border-border">
+                    <div className="border-b border-border px-3 py-2">
+                      <p className="text-sm font-medium text-foreground">Project links</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Link each Daize project to one Linear project. The Tasks page uses this to
+                        show which workspace an issue belongs to.
+                      </p>
+                    </div>
+
+                    {linearProjectsQuery.isLoading ? (
+                      <div className="space-y-2 px-3 py-3">
+                        {projects.map((project) => (
+                          <div
+                            key={project.id}
+                            className="grid gap-3 md:grid-cols-[minmax(0,1fr)_260px]"
+                          >
+                            <div className="min-w-0">
+                              <div className="h-4 w-32 animate-pulse rounded bg-muted" />
+                              <div className="mt-2 h-3 w-48 animate-pulse rounded bg-muted" />
+                            </div>
+                            <div className="h-9 animate-pulse rounded bg-muted" />
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {!linearProjectsQuery.isLoading && linearProjectsQuery.error ? (
+                      <div className="px-3 py-3">
+                        <Alert variant="error">
+                          <AlertTitle>Unable to load Linear projects</AlertTitle>
+                          <AlertDescription>
+                            <p>
+                              {linearProjectsQuery.error instanceof Error
+                                ? linearProjectsQuery.error.message
+                                : "The Linear project list could not be loaded right now."}
+                            </p>
+                          </AlertDescription>
+                        </Alert>
+                      </div>
+                    ) : null}
+
+                    {!linearProjectsQuery.isLoading &&
+                    !linearProjectsQuery.error &&
+                    (linearProjectsQuery.data?.projects.length ?? 0) === 0 ? (
+                      <div className="px-3 py-3 text-sm text-muted-foreground">
+                        No Linear projects were returned for this workspace.
+                      </div>
+                    ) : null}
+
+                    {!linearProjectsQuery.isLoading &&
+                    !linearProjectsQuery.error &&
+                    (linearProjectsQuery.data?.projects.length ?? 0) > 0 ? (
+                      <div className="divide-y divide-border">
+                        {projects.map((project) => (
+                          <div
+                            key={project.id}
+                            className="grid gap-3 px-3 py-3 md:grid-cols-[minmax(0,1fr)_260px]"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-foreground">
+                                {project.name}
+                              </p>
+                              <p className="truncate text-xs text-muted-foreground">
+                                {project.cwd}
+                              </p>
+                            </div>
+                            <Select
+                              value={project.linearProjectId ?? UNLINKED_LINEAR_PROJECT_VALUE}
+                              onValueChange={(value) => {
+                                const nextValue =
+                                  value === UNLINKED_LINEAR_PROJECT_VALUE ? null : value;
+                                void handleLinearProjectLinkChange(project.id, nextValue);
+                              }}
+                              disabled={updatingLinkedProjectId === project.id}
+                            >
+                              <SelectTrigger
+                                className="w-full"
+                                aria-label={`Linked Linear project for ${project.name}`}
+                              >
+                                <SelectValue placeholder="Select a Linear project" />
+                              </SelectTrigger>
+                              <SelectPopup>
+                                <SelectItem value={UNLINKED_LINEAR_PROJECT_VALUE}>
+                                  Not linked
+                                </SelectItem>
+                                {(linearProjectsQuery.data?.projects ?? []).map((linearProject) => (
+                                  <SelectItem key={linearProject.id} value={linearProject.id}>
+                                    {linearProject.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectPopup>
+                            </Select>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             </section>
           </div>

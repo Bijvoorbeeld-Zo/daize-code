@@ -182,6 +182,7 @@ export function projectEvent(
             title: payload.title,
             workspaceRoot: payload.workspaceRoot,
             defaultModel: payload.defaultModel,
+            linearProjectId: payload.linearProjectId,
             scripts: payload.scripts,
             createdAt: payload.createdAt,
             updatedAt: payload.updatedAt,
@@ -213,6 +214,9 @@ export function projectEvent(
                     : {}),
                   ...(payload.defaultModel !== undefined
                     ? { defaultModel: payload.defaultModel }
+                    : {}),
+                  ...(payload.linearProjectId !== undefined
+                    ? { linearProjectId: payload.linearProjectId }
                     : {}),
                   ...(payload.scripts !== undefined ? { scripts: payload.scripts } : {}),
                   updatedAt: payload.updatedAt,

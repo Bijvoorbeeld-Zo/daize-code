@@ -146,6 +146,7 @@ function mapProjectsFromReadModel(
         (persistedExpandedProjectCwds.size > 0
           ? persistedExpandedProjectCwds.has(project.workspaceRoot)
           : true),
+      linearProjectId: project.linearProjectId ?? null,
       scripts: project.scripts.map((script) => ({ ...script })),
     } satisfies Project;
   });

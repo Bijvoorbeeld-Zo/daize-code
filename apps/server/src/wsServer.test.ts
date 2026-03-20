@@ -1045,6 +1045,17 @@ describe("WebSocket Server", () => {
             message: null,
           },
         }),
+      listProjects: () =>
+        Effect.succeed({
+          projects: [
+            {
+              id: "linear-project-1",
+              name: "Daize",
+              icon: "triangle",
+            },
+          ],
+          syncedAt: "2026-03-19T10:00:00.000Z",
+        }),
       listMyIssues: () =>
         Effect.succeed({
           issues: [
@@ -1052,6 +1063,11 @@ describe("WebSocket Server", () => {
               id: "issue-1",
               identifier: "ENG-123",
               title: "Implement Linear tasks",
+              project: {
+                id: "linear-project-1",
+                name: "Daize",
+                icon: "triangle",
+              },
               status: {
                 name: "In Progress",
                 color: null,
@@ -1098,6 +1114,19 @@ describe("WebSocket Server", () => {
       },
     });
 
+    const projectsResponse = await sendRequest(ws, WS_METHODS.linearListProjects);
+    expect(projectsResponse.error).toBeUndefined();
+    expect(projectsResponse.result).toEqual({
+      projects: [
+        {
+          id: "linear-project-1",
+          name: "Daize",
+          icon: "triangle",
+        },
+      ],
+      syncedAt: "2026-03-19T10:00:00.000Z",
+    });
+
     const listResponse = await sendRequest(ws, WS_METHODS.linearListMyIssues, {
       refresh: false,
     });
@@ -1108,6 +1137,11 @@ describe("WebSocket Server", () => {
           id: "issue-1",
           identifier: "ENG-123",
           title: "Implement Linear tasks",
+          project: {
+            id: "linear-project-1",
+            name: "Daize",
+            icon: "triangle",
+          },
           status: {
             name: "In Progress",
             color: null,

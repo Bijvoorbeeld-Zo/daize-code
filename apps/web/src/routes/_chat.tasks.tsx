@@ -1,14 +1,17 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, createFileRoute } from "@tanstack/react-router";
 import { RefreshCwIcon } from "lucide-react";
 
+import { useAppSettings } from "../appSettings";
 import { isElectron } from "../env";
 import {
   linearConnectionQueryOptions,
   linearIssuesQueryOptions,
   linearQueryKeys,
 } from "../lib/linearReactQuery";
+import { useStore } from "../store";
+import { formatTimestamp } from "../timestampFormat";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
@@ -20,10 +23,11 @@ function TasksLoadingState() {
       {Array.from({ length: 6 }, (_, index) => (
         <div
           key={`task-skeleton-${index}`}
-          className="grid grid-cols-[90px_minmax(0,1fr)_120px] items-center gap-4 rounded-lg border border-border px-3 py-3"
+          className="grid grid-cols-[90px_minmax(0,1fr)_140px_120px] items-center gap-4 rounded-lg border border-border px-3 py-3"
         >
           <Skeleton className="h-4 w-16 rounded-sm" />
           <Skeleton className="h-4 w-full rounded-sm" />
+          <Skeleton className="h-4 w-24 rounded-sm" />
           <Skeleton className="ml-auto h-4 w-20 rounded-sm" />
         </div>
       ))}
@@ -34,6 +38,8 @@ function TasksLoadingState() {
 function TasksRouteView() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { settings } = useAppSettings();
+  const projects = useStore((store) => store.projects);
   const linearConnectionQuery = useQuery(linearConnectionQueryOptions());
   const linearConnection = linearConnectionQuery.data?.connection ?? null;
   const linearIssuesQuery = useQuery({
@@ -48,6 +54,16 @@ function TasksRouteView() {
 
     void queryClient.invalidateQueries({ queryKey: linearQueryKeys.connection() });
   }, [linearIssuesQuery.error, queryClient]);
+
+  const projectNameByLinearProjectId = useMemo(
+    () =>
+      new Map(
+        projects
+          .filter((project) => project.linearProjectId !== null)
+          .map((project) => [project.linearProjectId, project.name] as const),
+      ),
+    [projects],
+  );
 
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate">
@@ -201,22 +217,33 @@ function TasksRouteView() {
                     {linearIssuesQuery.data.issues.length === 1 ? "" : "s"}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Synced {linearIssuesQuery.data.syncedAt}
+                    Synced{" "}
+                    {formatTimestamp(linearIssuesQuery.data.syncedAt, settings.timestampFormat)}
                   </p>
                 </div>
                 <div className="divide-y divide-border">
                   {linearIssuesQuery.data.issues.map((issue) => (
                     <div
                       key={issue.id}
-                      className="grid grid-cols-[90px_minmax(0,1fr)_120px] items-center gap-4 px-4 py-3"
+                      className="grid grid-cols-[90px_minmax(0,1fr)_140px_120px] items-center gap-4 px-4 py-3"
                     >
                       <span className="text-xs font-medium text-foreground/80">
                         {issue.identifier}
                       </span>
-                      <span className="min-w-0 truncate text-sm text-foreground">
-                        {issue.title}
-                      </span>
-                      <span className="justify-self-end text-xs text-muted-foreground">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm text-foreground">{issue.title}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {issue.project?.name ?? "No Linear project"}
+                        </p>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-xs text-foreground/80">
+                          {issue.project?.id
+                            ? (projectNameByLinearProjectId.get(issue.project.id) ?? "Not linked")
+                            : "No linked project"}
+                        </p>
+                      </div>
+                      <span className="justify-self-end text-right text-xs text-muted-foreground">
                         {issue.status.name}
                       </span>
                     </div>

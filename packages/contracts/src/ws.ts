@@ -56,6 +56,7 @@ export const WS_METHODS = {
   linearGetConnection: "linear.getConnection",
   linearConnect: "linear.connect",
   linearDisconnect: "linear.disconnect",
+  linearListProjects: "linear.listProjects",
   linearListMyIssues: "linear.listMyIssues",
 
   // Git methods
@@ -126,6 +127,7 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.linearGetConnection, Schema.Struct({})),
   tagRequestBody(WS_METHODS.linearConnect, LinearConnectInput),
   tagRequestBody(WS_METHODS.linearDisconnect, Schema.Struct({})),
+  tagRequestBody(WS_METHODS.linearListProjects, Schema.Struct({})),
   tagRequestBody(WS_METHODS.linearListMyIssues, LinearListIssuesInput),
 
   // Git methods

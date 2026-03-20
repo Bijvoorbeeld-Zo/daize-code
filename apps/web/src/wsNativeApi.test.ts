@@ -268,6 +268,7 @@ describe("wsNativeApi", () => {
         title: "Project",
         workspaceRoot: "/tmp/workspace",
         defaultModel: null,
+        linearProjectId: null,
         scripts: [],
         createdAt: "2026-02-24T00:00:00.000Z",
         updatedAt: "2026-02-24T00:00:00.000Z",
@@ -296,15 +297,21 @@ describe("wsNativeApi", () => {
       },
     });
     requestMock.mockResolvedValueOnce({
+      projects: [],
+      syncedAt: "2026-03-19T10:00:00.000Z",
+    });
+    requestMock.mockResolvedValueOnce({
       issues: [],
       syncedAt: "2026-03-19T10:00:00.000Z",
     });
 
     await api.linear.getConnection();
+    await api.linear.listProjects();
     await api.linear.listMyIssues();
 
     expect(requestMock).toHaveBeenNthCalledWith(1, WS_METHODS.linearGetConnection, {});
-    expect(requestMock).toHaveBeenNthCalledWith(2, WS_METHODS.linearListMyIssues, {
+    expect(requestMock).toHaveBeenNthCalledWith(2, WS_METHODS.linearListProjects, {});
+    expect(requestMock).toHaveBeenNthCalledWith(3, WS_METHODS.linearListMyIssues, {
       refresh: false,
     });
   });

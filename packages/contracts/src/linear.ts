@@ -16,10 +16,18 @@ export const LinearIssueStatus = Schema.Struct({
 });
 export type LinearIssueStatus = typeof LinearIssueStatus.Type;
 
+export const LinearProjectSummary = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+  icon: Schema.NullOr(TrimmedNonEmptyString),
+});
+export type LinearProjectSummary = typeof LinearProjectSummary.Type;
+
 export const LinearIssueSummary = Schema.Struct({
   id: TrimmedNonEmptyString,
   identifier: TrimmedNonEmptyString,
   title: TrimmedNonEmptyString,
+  project: Schema.NullOr(LinearProjectSummary),
   status: LinearIssueStatus,
   assigneeName: Schema.NullOr(TrimmedNonEmptyString),
 });
@@ -45,6 +53,12 @@ export const LinearListIssuesResult = Schema.Struct({
   syncedAt: IsoDateTime,
 });
 export type LinearListIssuesResult = typeof LinearListIssuesResult.Type;
+
+export const LinearListProjectsResult = Schema.Struct({
+  projects: Schema.Array(LinearProjectSummary),
+  syncedAt: IsoDateTime,
+});
+export type LinearListProjectsResult = typeof LinearListProjectsResult.Type;
 
 export const LinearConnectInput = Schema.Struct({
   apiKey: TrimmedNonEmptyString.check(Schema.isMaxLength(4096)),

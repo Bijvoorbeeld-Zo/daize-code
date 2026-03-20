@@ -136,6 +136,7 @@ export function createWsNativeApi(): NativeApi {
       getConnection: () => transport.request(WS_METHODS.linearGetConnection, {}),
       connect: (input) => transport.request(WS_METHODS.linearConnect, input),
       disconnect: () => transport.request(WS_METHODS.linearDisconnect, {}),
+      listProjects: () => transport.request(WS_METHODS.linearListProjects, {}),
       listMyIssues: (input) =>
         transport.request(WS_METHODS.linearListMyIssues, {
           refresh: input?.refresh ?? false,

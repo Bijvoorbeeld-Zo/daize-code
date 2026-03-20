@@ -31,6 +31,7 @@ import type {
   LinearGetConnectionResult,
   LinearListIssuesInput,
   LinearListIssuesResult,
+  LinearListProjectsResult,
 } from "./linear";
 import type { ServerConfig } from "./server";
 import type {
@@ -145,6 +146,7 @@ export interface NativeApi {
     getConnection: () => Promise<LinearGetConnectionResult>;
     connect: (input: LinearConnectInput) => Promise<LinearConnectResult>;
     disconnect: () => Promise<LinearDisconnectResult>;
+    listProjects: () => Promise<LinearListProjectsResult>;
     listMyIssues: (input?: LinearListIssuesInput) => Promise<LinearListIssuesResult>;
   };
   git: {

@@ -82,6 +82,7 @@ export interface Project {
   cwd: string;
   model: string;
   expanded: boolean;
+  linearProjectId: string | null;
   scripts: ProjectScript[];
 }
 

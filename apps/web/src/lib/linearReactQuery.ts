@@ -8,6 +8,7 @@ const LINEAR_ISSUES_STALE_TIME_MS = 30_000;
 export const linearQueryKeys = {
   all: ["linear"] as const,
   connection: () => ["linear", "connection"] as const,
+  projects: () => ["linear", "projects"] as const,
   issues: () => ["linear", "issues"] as const,
 };
 
@@ -35,6 +36,20 @@ export function linearIssuesQueryOptions() {
     queryFn: async () => {
       const api = ensureNativeApi();
       return api.linear.listMyIssues({ refresh: false });
+    },
+    staleTime: LINEAR_ISSUES_STALE_TIME_MS,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+    retry: false,
+  });
+}
+
+export function linearProjectsQueryOptions() {
+  return queryOptions({
+    queryKey: linearQueryKeys.projects(),
+    queryFn: async () => {
+      const api = ensureNativeApi();
+      return api.linear.listProjects();
     },
     staleTime: LINEAR_ISSUES_STALE_TIME_MS,
     refetchOnWindowFocus: true,

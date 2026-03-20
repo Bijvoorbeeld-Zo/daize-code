@@ -6,8 +6,10 @@ import {
   type LinearDisconnectResult,
   type LinearGetConnectionResult,
   LinearIssueSummary,
+  LinearProjectSummary,
   type LinearListIssuesInput,
   type LinearListIssuesResult,
+  type LinearListProjectsResult,
 } from "@daize/contracts";
 import { Config, DateTime, Effect, Layer, Option, Schema } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
@@ -28,6 +30,7 @@ import {
 const LINEAR_INTEGRATION_KEY = "linear" as const;
 const LINEAR_PROVIDER = "linear" as const;
 const OPEN_ISSUE_LIMIT = 100;
+const PROJECT_LIST_LIMIT = 250;
 
 const LinearEnvConfig = Config.all({
   apiBaseUrl: Config.string("DAIZE_LINEAR_API_URL").pipe(
@@ -55,6 +58,13 @@ const GraphqlIssueNodeSchema = Schema.Struct({
   title: Schema.String,
   completedAt: Schema.NullOr(Schema.String),
   canceledAt: Schema.NullOr(Schema.String),
+  project: Schema.NullOr(
+    Schema.Struct({
+      id: Schema.String,
+      name: Schema.String,
+      icon: Schema.NullOr(Schema.String),
+    }),
+  ),
   state: Schema.Struct({
     name: Schema.String,
     color: Schema.NullOr(Schema.String),
@@ -74,6 +84,18 @@ const ListIssuesResponseSchema = Schema.Struct({
   }),
 });
 
+const GraphqlProjectNodeSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  icon: Schema.NullOr(Schema.String),
+});
+
+const ListProjectsResponseSchema = Schema.Struct({
+  projects: Schema.Struct({
+    nodes: Schema.Array(GraphqlProjectNodeSchema),
+  }),
+});
+
 const ConnectEnvelopeSchema = Schema.Struct({
   data: Schema.optional(ConnectResponseSchema),
   errors: Schema.optional(Schema.Array(LinearGraphqlErrorSchema)),
@@ -81,6 +103,11 @@ const ConnectEnvelopeSchema = Schema.Struct({
 
 const ListIssuesEnvelopeSchema = Schema.Struct({
   data: Schema.optional(ListIssuesResponseSchema),
+  errors: Schema.optional(Schema.Array(LinearGraphqlErrorSchema)),
+});
+
+const ListProjectsEnvelopeSchema = Schema.Struct({
+  data: Schema.optional(ListProjectsResponseSchema),
   errors: Schema.optional(Schema.Array(LinearGraphqlErrorSchema)),
 });
 
@@ -104,6 +131,11 @@ const LIST_MY_ISSUES_QUERY = `
           title
           completedAt
           canceledAt
+          project {
+            id
+            name
+            icon
+          }
           state {
             name
             color
@@ -112,6 +144,18 @@ const LIST_MY_ISSUES_QUERY = `
             name
           }
         }
+      }
+    }
+  }
+`;
+
+const LIST_PROJECTS_QUERY = `
+  query LinearTasksListProjects($first: Int!) {
+    projects(first: $first) {
+      nodes {
+        id
+        name
+        icon
       }
     }
   }
@@ -170,11 +214,27 @@ function toOpenIssueSummary(
     id: issue.id,
     identifier: issue.identifier,
     title: issue.title,
+    project:
+      issue.project === null
+        ? null
+        : LinearProjectSummary.makeUnsafe({
+            id: issue.project.id,
+            name: issue.project.name,
+            icon: toOptionalTrimmed(issue.project.icon),
+          }),
     status: {
       name: issue.state.name,
       color: toOptionalTrimmed(issue.state.color),
     },
     assigneeName: toOptionalTrimmed(issue.assignee?.name),
+  });
+}
+
+function toProjectSummary(project: typeof GraphqlProjectNodeSchema.Type) {
+  return LinearProjectSummary.makeUnsafe({
+    id: project.id,
+    name: project.name,
+    icon: toOptionalTrimmed(project.icon),
   });
 }
 
@@ -362,6 +422,84 @@ const makeLinearService = Effect.gen(function* () {
       return envelope.data;
     });
 
+  const executeListProjectsQuery = (token: string) =>
+    Effect.gen(function* () {
+      const rawEnvelope = yield* executeGraphqlRequest({
+        token,
+        query: LIST_PROJECTS_QUERY,
+        variables: { first: PROJECT_LIST_LIMIT },
+        authErrorMessage: "Your saved Linear API key is no longer valid. Reconnect it in Settings.",
+      });
+
+      const envelope = yield* Effect.try({
+        try: () =>
+          Schema.decodeUnknownSync(ListProjectsEnvelopeSchema as never)(
+            rawEnvelope,
+          ) as typeof ListProjectsEnvelopeSchema.Type,
+        catch: (cause) =>
+          new LinearApiError({
+            detail: "Linear API returned an invalid response payload.",
+            cause,
+          }),
+      });
+
+      const envelopeError = resolveGraphqlEnvelopeError(
+        envelope.errors,
+        "Your saved Linear API key is no longer valid. Reconnect it in Settings.",
+      );
+      if (envelopeError) {
+        return yield* envelopeError;
+      }
+
+      if (envelope.data === undefined) {
+        return yield* new LinearApiError({
+          detail: "Linear API returned no data.",
+        });
+      }
+
+      return envelope.data;
+    });
+
+  const requireConnectionRecord = () =>
+    Effect.gen(function* () {
+      const record = yield* readRecord();
+      const existing = Option.getOrNull(record);
+      if (existing === null) {
+        return yield* new LinearNotConnectedError({
+          detail: "Linear is not connected yet. Add an API key in Settings first.",
+        });
+      }
+
+      const token = toOptionalTrimmed(existing.accessToken);
+      if (!token) {
+        return yield* new LinearNotConnectedError({
+          detail: "Linear is not connected yet. Add an API key in Settings first.",
+        });
+      }
+
+      return { existing, token };
+    });
+
+  const persistInvalidConnection = (existing: LinearIntegrationRecord, error: LinearAuthError) =>
+    Effect.gen(function* () {
+      const now = yield* DateTime.now.pipe(Effect.map(DateTime.formatIso));
+      yield* persistRecord({
+        ...existing,
+        status: "invalid",
+        updatedAt: now,
+        lastError: error.detail,
+      });
+    });
+
+  const persistHealthyConnection = (existing: LinearIntegrationRecord, syncedAt: string) =>
+    persistRecord({
+      ...existing,
+      status: "connected",
+      lastSyncAt: syncedAt,
+      updatedAt: syncedAt,
+      lastError: null,
+    });
+
   const getConnection = (): Effect.Effect<LinearGetConnectionResult, LinearServiceError> =>
     Effect.gen(function* () {
       const record = yield* readRecord();
@@ -417,39 +555,43 @@ const makeLinearService = Effect.gen(function* () {
       } satisfies LinearDisconnectResult;
     });
 
+  const listProjects = (): Effect.Effect<LinearListProjectsResult, LinearServiceError> =>
+    Effect.gen(function* () {
+      const { existing, token } = yield* requireConnectionRecord();
+
+      const listResult: typeof ListProjectsResponseSchema.Type = yield* executeListProjectsQuery(
+        token,
+      ).pipe(
+        Effect.tapError((error) =>
+          Schema.is(LinearAuthError)(error)
+            ? persistInvalidConnection(existing, error)
+            : Effect.void,
+        ),
+      );
+
+      const projects = listResult.projects.nodes.map(toProjectSummary);
+      const syncedAt = yield* DateTime.now.pipe(Effect.map(DateTime.formatIso));
+
+      yield* persistHealthyConnection(existing, syncedAt);
+
+      return {
+        projects,
+        syncedAt,
+      } satisfies LinearListProjectsResult;
+    });
+
   const listMyIssues = (
     _input: LinearListIssuesInput,
   ): Effect.Effect<LinearListIssuesResult, LinearServiceError> =>
     Effect.gen(function* () {
-      const record = yield* readRecord();
-      const existing = Option.getOrNull(record);
-      if (existing === null) {
-        return yield* new LinearNotConnectedError({
-          detail: "Linear is not connected yet. Add an API key in Settings first.",
-        });
-      }
-
-      const token = toOptionalTrimmed(existing.accessToken);
-      if (!token) {
-        return yield* new LinearNotConnectedError({
-          detail: "Linear is not connected yet. Add an API key in Settings first.",
-        });
-      }
+      const { existing, token } = yield* requireConnectionRecord();
 
       const listResult: typeof ListIssuesResponseSchema.Type = yield* executeListIssuesQuery(
         token,
       ).pipe(
         Effect.tapError((error) =>
           Schema.is(LinearAuthError)(error)
-            ? Effect.gen(function* () {
-                const now = yield* DateTime.now.pipe(Effect.map(DateTime.formatIso));
-                yield* persistRecord({
-                  ...existing,
-                  status: "invalid",
-                  updatedAt: now,
-                  lastError: error.detail,
-                });
-              })
+            ? persistInvalidConnection(existing, error)
             : Effect.void,
         ),
       );
@@ -459,13 +601,7 @@ const makeLinearService = Effect.gen(function* () {
         .filter((issue): issue is typeof LinearIssueSummary.Type => issue !== null);
       const syncedAt = yield* DateTime.now.pipe(Effect.map(DateTime.formatIso));
 
-      yield* persistRecord({
-        ...existing,
-        status: "connected",
-        lastSyncAt: syncedAt,
-        updatedAt: syncedAt,
-        lastError: null,
-      });
+      yield* persistHealthyConnection(existing, syncedAt);
 
       return {
         issues,
@@ -477,6 +613,7 @@ const makeLinearService = Effect.gen(function* () {
     getConnection,
     connect,
     disconnect,
+    listProjects,
     listMyIssues,
   } satisfies LinearServiceShape;
 });
