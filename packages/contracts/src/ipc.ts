@@ -32,8 +32,14 @@ import type {
   LinearListIssuesInput,
   LinearListIssuesResult,
   LinearListProjectsResult,
+  LinearStartIssueInput,
+  LinearStartIssueResult,
 } from "./linear";
-import type { ServerConfig } from "./server";
+import type {
+  ServerConfig,
+  ServerInstallCodexLinearMcpInput,
+  ServerInstallCodexLinearMcpResult,
+} from "./server";
 import type {
   TerminalClearInput,
   TerminalCloseInput,
@@ -148,6 +154,7 @@ export interface NativeApi {
     disconnect: () => Promise<LinearDisconnectResult>;
     listProjects: () => Promise<LinearListProjectsResult>;
     listMyIssues: (input?: LinearListIssuesInput) => Promise<LinearListIssuesResult>;
+    startIssue: (input: LinearStartIssueInput) => Promise<LinearStartIssueResult>;
   };
   git: {
     // Existing branch/worktree API
@@ -175,6 +182,9 @@ export interface NativeApi {
   server: {
     getConfig: () => Promise<ServerConfig>;
     upsertKeybinding: (input: ServerUpsertKeybindingInput) => Promise<ServerUpsertKeybindingResult>;
+    installCodexLinearMcp: (
+      input?: ServerInstallCodexLinearMcpInput,
+    ) => Promise<ServerInstallCodexLinearMcpResult>;
   };
   orchestration: {
     getSnapshot: () => Promise<OrchestrationReadModel>;

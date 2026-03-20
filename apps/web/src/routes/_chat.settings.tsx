@@ -1042,7 +1042,14 @@ function SettingsRouteView() {
                                 className="w-full"
                                 aria-label={`Linked Linear project for ${project.name}`}
                               >
-                                <SelectValue placeholder="Select a Linear project" />
+                                <SelectValue placeholder="Select a Linear project">
+                                  {project.linearProjectId === null
+                                    ? "Not linked"
+                                    : (linearProjectsQuery.data?.projects.find(
+                                        (linearProject) =>
+                                          linearProject.id === project.linearProjectId,
+                                      )?.name ?? "Unknown Linear project")}
+                                </SelectValue>
                               </SelectTrigger>
                               <SelectPopup>
                                 <SelectItem value={UNLINKED_LINEAR_PROJECT_VALUE}>

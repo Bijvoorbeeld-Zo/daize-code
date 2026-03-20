@@ -10,6 +10,8 @@ import {
   type LinearListIssuesInput,
   type LinearListIssuesResult,
   type LinearListProjectsResult,
+  type LinearStartIssueInput,
+  type LinearStartIssueResult,
 } from "@daize/contracts";
 import { Config, DateTime, Effect, Layer, Option, Schema } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
@@ -76,6 +78,33 @@ const GraphqlIssueNodeSchema = Schema.Struct({
   ),
 });
 
+const IssueStartLookupResponseSchema = Schema.Struct({
+  issue: Schema.NullOr(
+    Schema.Struct({
+      id: Schema.String,
+      team: Schema.Struct({
+        id: Schema.String,
+        states: Schema.Struct({
+          nodes: Schema.Array(
+            Schema.Struct({
+              id: Schema.String,
+              name: Schema.String,
+              position: Schema.Number,
+            }),
+          ),
+        }),
+      }),
+    }),
+  ),
+});
+
+const IssueUpdateResponseSchema = Schema.Struct({
+  issueUpdate: Schema.Struct({
+    success: Schema.Boolean,
+    issue: Schema.NullOr(GraphqlIssueNodeSchema),
+  }),
+});
+
 const ListIssuesResponseSchema = Schema.Struct({
   viewer: Schema.Struct({
     assignedIssues: Schema.Struct({
@@ -108,6 +137,16 @@ const ListIssuesEnvelopeSchema = Schema.Struct({
 
 const ListProjectsEnvelopeSchema = Schema.Struct({
   data: Schema.optional(ListProjectsResponseSchema),
+  errors: Schema.optional(Schema.Array(LinearGraphqlErrorSchema)),
+});
+
+const IssueStartLookupEnvelopeSchema = Schema.Struct({
+  data: Schema.optional(IssueStartLookupResponseSchema),
+  errors: Schema.optional(Schema.Array(LinearGraphqlErrorSchema)),
+});
+
+const IssueUpdateEnvelopeSchema = Schema.Struct({
+  data: Schema.optional(IssueUpdateResponseSchema),
   errors: Schema.optional(Schema.Array(LinearGraphqlErrorSchema)),
 });
 
@@ -156,6 +195,51 @@ const LIST_PROJECTS_QUERY = `
         id
         name
         icon
+      }
+    }
+  }
+`;
+
+const ISSUE_START_LOOKUP_QUERY = `
+  query LinearTasksIssueStartLookup($issueId: String!) {
+    issue(id: $issueId) {
+      id
+      team {
+        id
+        states(filter: { type: { eq: "started" } }) {
+          nodes {
+            id
+            name
+            position
+          }
+        }
+      }
+    }
+  }
+`;
+
+const ISSUE_UPDATE_STATE_MUTATION = `
+  mutation LinearTasksStartIssue($issueId: String!, $stateId: String!) {
+    issueUpdate(id: $issueId, input: { stateId: $stateId }) {
+      success
+      issue {
+        id
+        identifier
+        title
+        completedAt
+        canceledAt
+        project {
+          id
+          name
+          icon
+        }
+        state {
+          name
+          color
+        }
+        assignee {
+          name
+        }
       }
     }
   }
@@ -460,6 +544,82 @@ const makeLinearService = Effect.gen(function* () {
       return envelope.data;
     });
 
+  const executeIssueStartLookupQuery = (token: string, issueId: string) =>
+    Effect.gen(function* () {
+      const rawEnvelope = yield* executeGraphqlRequest({
+        token,
+        query: ISSUE_START_LOOKUP_QUERY,
+        variables: { issueId },
+        authErrorMessage: "Your saved Linear API key is no longer valid. Reconnect it in Settings.",
+      });
+
+      const envelope = yield* Effect.try({
+        try: () =>
+          Schema.decodeUnknownSync(IssueStartLookupEnvelopeSchema as never)(
+            rawEnvelope,
+          ) as typeof IssueStartLookupEnvelopeSchema.Type,
+        catch: (cause) =>
+          new LinearApiError({
+            detail: "Linear API returned an invalid response payload.",
+            cause,
+          }),
+      });
+
+      const envelopeError = resolveGraphqlEnvelopeError(
+        envelope.errors,
+        "Your saved Linear API key is no longer valid. Reconnect it in Settings.",
+      );
+      if (envelopeError) {
+        return yield* envelopeError;
+      }
+
+      if (envelope.data === undefined) {
+        return yield* new LinearApiError({
+          detail: "Linear API returned no data.",
+        });
+      }
+
+      return envelope.data;
+    });
+
+  const executeIssueUpdateMutation = (token: string, issueId: string, stateId: string) =>
+    Effect.gen(function* () {
+      const rawEnvelope = yield* executeGraphqlRequest({
+        token,
+        query: ISSUE_UPDATE_STATE_MUTATION,
+        variables: { issueId, stateId },
+        authErrorMessage: "Your saved Linear API key is no longer valid. Reconnect it in Settings.",
+      });
+
+      const envelope = yield* Effect.try({
+        try: () =>
+          Schema.decodeUnknownSync(IssueUpdateEnvelopeSchema as never)(
+            rawEnvelope,
+          ) as typeof IssueUpdateEnvelopeSchema.Type,
+        catch: (cause) =>
+          new LinearApiError({
+            detail: "Linear API returned an invalid response payload.",
+            cause,
+          }),
+      });
+
+      const envelopeError = resolveGraphqlEnvelopeError(
+        envelope.errors,
+        "Your saved Linear API key is no longer valid. Reconnect it in Settings.",
+      );
+      if (envelopeError) {
+        return yield* envelopeError;
+      }
+
+      if (envelope.data === undefined) {
+        return yield* new LinearApiError({
+          detail: "Linear API returned no data.",
+        });
+      }
+
+      return envelope.data;
+    });
+
   const requireConnectionRecord = () =>
     Effect.gen(function* () {
       const record = yield* readRecord();
@@ -609,12 +769,78 @@ const makeLinearService = Effect.gen(function* () {
       } satisfies LinearListIssuesResult;
     });
 
+  const startIssue = (
+    input: LinearStartIssueInput,
+  ): Effect.Effect<LinearStartIssueResult, LinearServiceError> =>
+    Effect.gen(function* () {
+      const { existing, token } = yield* requireConnectionRecord();
+
+      const lookupResult: typeof IssueStartLookupResponseSchema.Type =
+        yield* executeIssueStartLookupQuery(token, input.issueId).pipe(
+          Effect.tapError((error) =>
+            Schema.is(LinearAuthError)(error)
+              ? persistInvalidConnection(existing, error)
+              : Effect.void,
+          ),
+        );
+
+      if (lookupResult.issue === null) {
+        return yield* new LinearApiError({
+          detail: "The selected Linear issue could not be found.",
+        });
+      }
+
+      const startedState = lookupResult.issue.team.states.nodes.toSorted(
+        (left, right) => left.position - right.position,
+      )[0];
+
+      if (!startedState) {
+        return yield* new LinearApiError({
+          detail: "The issue's Linear team does not have a started workflow state.",
+        });
+      }
+
+      const updateResult: typeof IssueUpdateResponseSchema.Type = yield* executeIssueUpdateMutation(
+        token,
+        input.issueId,
+        startedState.id,
+      ).pipe(
+        Effect.tapError((error) =>
+          Schema.is(LinearAuthError)(error)
+            ? persistInvalidConnection(existing, error)
+            : Effect.void,
+        ),
+      );
+
+      if (!updateResult.issueUpdate.success || updateResult.issueUpdate.issue === null) {
+        return yield* new LinearApiError({
+          detail: "Linear could not move the issue to the started state.",
+        });
+      }
+
+      const issue = toOpenIssueSummary(updateResult.issueUpdate.issue);
+      if (issue === null) {
+        return yield* new LinearApiError({
+          detail: "Linear returned a closed issue after the status update.",
+        });
+      }
+
+      const syncedAt = yield* DateTime.now.pipe(Effect.map(DateTime.formatIso));
+      yield* persistHealthyConnection(existing, syncedAt);
+
+      return {
+        issue,
+        syncedAt,
+      } satisfies LinearStartIssueResult;
+    });
+
   return {
     getConnection,
     connect,
     disconnect,
     listProjects,
     listMyIssues,
+    startIssue,
   } satisfies LinearServiceShape;
 });
 

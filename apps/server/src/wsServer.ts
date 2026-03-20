@@ -55,6 +55,11 @@ import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnap
 import { OrchestrationReactor } from "./orchestration/Services/OrchestrationReactor";
 import { ProviderService } from "./provider/Services/ProviderService";
 import { ProviderHealth } from "./provider/Services/ProviderHealth";
+import {
+  getCodexLinearMcpIssue,
+  installCodexLinearMcp,
+  startCodexLinearMcpAuth,
+} from "./provider/codexConfig";
 import { CheckpointDiffQuery } from "./checkpointing/Services/CheckpointDiffQuery";
 import { clamp } from "effect/Number";
 import { Open, resolveAvailableEditors } from "./open";
@@ -619,6 +624,12 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   const checkpointDiffQuery = yield* CheckpointDiffQuery;
   const orchestrationReactor = yield* OrchestrationReactor;
   const { openInEditor } = yield* Open;
+  const loadServerConfigIssues = () =>
+    Effect.gen(function* () {
+      const keybindingsConfig = yield* keybindingsManager.loadConfigState;
+      const codexLinearMcpIssues = yield* getCodexLinearMcpIssue;
+      return [...keybindingsConfig.issues, ...codexLinearMcpIssues];
+    });
 
   const subscriptionsScope = yield* Scope.make("sequential");
   yield* Effect.addFinalizer(() => Scope.close(subscriptionsScope, Exit.void));
@@ -628,9 +639,12 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   ).pipe(Effect.forkIn(subscriptionsScope));
 
   yield* Stream.runForEach(keybindingsManager.streamChanges, (event) =>
-    pushBus.publishAll(WS_CHANNELS.serverConfigUpdated, {
-      issues: event.issues,
-      providers: providerStatuses,
+    Effect.gen(function* () {
+      const codexLinearMcpIssues = yield* getCodexLinearMcpIssue;
+      yield* pushBus.publishAll(WS_CHANNELS.serverConfigUpdated, {
+        issues: [...event.issues, ...codexLinearMcpIssues],
+        providers: providerStatuses,
+      });
     }),
   ).pipe(Effect.forkIn(subscriptionsScope));
 
@@ -816,6 +830,11 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         return yield* linearService.listMyIssues(body);
       }
 
+      case WS_METHODS.linearStartIssue: {
+        const body = stripRequestTag(request.body);
+        return yield* linearService.startIssue(body);
+      }
+
       case WS_METHODS.gitStatus: {
         const body = stripRequestTag(request.body);
         return yield* gitManager.status(body);
@@ -903,11 +922,12 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
 
       case WS_METHODS.serverGetConfig:
         const keybindingsConfig = yield* keybindingsManager.loadConfigState;
+        const issues = yield* loadServerConfigIssues();
         return {
           cwd,
           keybindingsConfigPath,
           keybindings: keybindingsConfig.keybindings,
-          issues: keybindingsConfig.issues,
+          issues,
           providers: providerStatuses,
           availableEditors,
         };
@@ -916,6 +936,15 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         const body = stripRequestTag(request.body);
         const keybindingsConfig = yield* keybindingsManager.upsertKeybindingRule(body);
         return { keybindings: keybindingsConfig, issues: [] };
+      }
+
+      case WS_METHODS.serverInstallCodexLinearMcp: {
+        const installResult = yield* installCodexLinearMcp;
+        const authResult = yield* startCodexLinearMcpAuth;
+        return {
+          ...installResult,
+          ...authResult,
+        };
       }
 
       default: {

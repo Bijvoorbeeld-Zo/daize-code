@@ -36,8 +36,8 @@ import {
 import { KeybindingRule } from "./keybindings";
 import { ProjectSearchEntriesInput, ProjectWriteFileInput } from "./project";
 import { OpenInEditorInput } from "./editor";
-import { ServerConfigUpdatedPayload } from "./server";
-import { LinearConnectInput, LinearListIssuesInput } from "./linear";
+import { ServerConfigUpdatedPayload, ServerInstallCodexLinearMcpInput } from "./server";
+import { LinearConnectInput, LinearListIssuesInput, LinearStartIssueInput } from "./linear";
 
 // ── WebSocket RPC Method Names ───────────────────────────────────────
 
@@ -58,6 +58,7 @@ export const WS_METHODS = {
   linearDisconnect: "linear.disconnect",
   linearListProjects: "linear.listProjects",
   linearListMyIssues: "linear.listMyIssues",
+  linearStartIssue: "linear.startIssue",
 
   // Git methods
   gitPull: "git.pull",
@@ -83,6 +84,7 @@ export const WS_METHODS = {
   // Server meta
   serverGetConfig: "server.getConfig",
   serverUpsertKeybinding: "server.upsertKeybinding",
+  serverInstallCodexLinearMcp: "server.installCodexLinearMcp",
 } as const;
 
 // ── Push Event Channels ──────────────────────────────────────────────
@@ -129,6 +131,7 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.linearDisconnect, Schema.Struct({})),
   tagRequestBody(WS_METHODS.linearListProjects, Schema.Struct({})),
   tagRequestBody(WS_METHODS.linearListMyIssues, LinearListIssuesInput),
+  tagRequestBody(WS_METHODS.linearStartIssue, LinearStartIssueInput),
 
   // Git methods
   tagRequestBody(WS_METHODS.gitPull, GitPullInput),
@@ -154,6 +157,7 @@ const WebSocketRequestBody = Schema.Union([
   // Server meta
   tagRequestBody(WS_METHODS.serverGetConfig, Schema.Struct({})),
   tagRequestBody(WS_METHODS.serverUpsertKeybinding, KeybindingRule),
+  tagRequestBody(WS_METHODS.serverInstallCodexLinearMcp, ServerInstallCodexLinearMcpInput),
 ]);
 
 export const WebSocketRequest = Schema.Struct({

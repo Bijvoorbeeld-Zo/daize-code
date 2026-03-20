@@ -304,16 +304,43 @@ describe("wsNativeApi", () => {
       issues: [],
       syncedAt: "2026-03-19T10:00:00.000Z",
     });
+    requestMock.mockResolvedValueOnce({
+      issue: {
+        id: "issue-1",
+        identifier: "ENG-123",
+        title: "Implement Linear tasks",
+        project: null,
+        status: {
+          name: "In Progress",
+          color: null,
+        },
+        assigneeName: null,
+      },
+      syncedAt: "2026-03-19T10:00:00.000Z",
+    });
+    requestMock.mockResolvedValueOnce({
+      configPath: "/Users/jane/.codex/config.toml",
+      changed: true,
+      authStarted: true,
+      browserOpened: false,
+      authUrl: "https://mcp.linear.app/authorize?state=test",
+    });
 
     await api.linear.getConnection();
     await api.linear.listProjects();
     await api.linear.listMyIssues();
+    await api.linear.startIssue({ issueId: "issue-1" });
+    await api.server.installCodexLinearMcp();
 
     expect(requestMock).toHaveBeenNthCalledWith(1, WS_METHODS.linearGetConnection, {});
     expect(requestMock).toHaveBeenNthCalledWith(2, WS_METHODS.linearListProjects, {});
     expect(requestMock).toHaveBeenNthCalledWith(3, WS_METHODS.linearListMyIssues, {
       refresh: false,
     });
+    expect(requestMock).toHaveBeenNthCalledWith(4, WS_METHODS.linearStartIssue, {
+      issueId: "issue-1",
+    });
+    expect(requestMock).toHaveBeenNthCalledWith(5, WS_METHODS.serverInstallCodexLinearMcp, {});
   });
 
   it("wraps orchestration dispatch commands in the command envelope", async () => {

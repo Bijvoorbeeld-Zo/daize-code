@@ -12,6 +12,7 @@ import {
   parseClaudeAuthStatusFromOutput,
   readCodexConfigModelProvider,
 } from "./ProviderHealth";
+import { getCodexLinearMcpIssue, readCodexConfigHasLinearMcpServer } from "../codexConfig";
 
 // ── Test helpers ────────────────────────────────────────────────────
 
@@ -234,6 +235,60 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
           }),
         ),
       ),
+    );
+  });
+
+  describe("readCodexConfigHasLinearMcpServer", () => {
+    it.effect("returns true when a linear MCP server section is configured", () =>
+      Effect.gen(function* () {
+        yield* withTempCodexHome(
+          ["[mcp_servers.linear]", 'command = "npx"', 'args = ["@linear/mcp@latest"]'].join("\n"),
+        );
+        const result = yield* readCodexConfigHasLinearMcpServer;
+        assert.strictEqual(result, true);
+      }),
+    );
+
+    it.effect("returns false when config has no linear MCP server", () =>
+      Effect.gen(function* () {
+        yield* withTempCodexHome(
+          ["[mcp_servers.playwright]", 'command = "npx"', 'args = ["@playwright/mcp@latest"]'].join(
+            "\n",
+          ),
+        );
+        const result = yield* readCodexConfigHasLinearMcpServer;
+        assert.strictEqual(result, false);
+      }),
+    );
+  });
+
+  describe("getCodexLinearMcpIssue", () => {
+    it.effect("returns an issue when the Linear MCP server is missing", () =>
+      Effect.gen(function* () {
+        yield* withTempCodexHome(
+          ["[mcp_servers.playwright]", 'command = "npx"', 'args = ["@playwright/mcp@latest"]'].join(
+            "\n",
+          ),
+        );
+        const issues = yield* getCodexLinearMcpIssue;
+        assert.deepStrictEqual(issues, [
+          {
+            kind: "codex.linear-mcp-missing",
+            message:
+              "Codex does not have a Linear MCP server configured. Install the Linear MCP in your Codex config before starting tasks from this page.",
+          },
+        ]);
+      }),
+    );
+
+    it.effect("returns no issues when the Linear MCP server exists", () =>
+      Effect.gen(function* () {
+        yield* withTempCodexHome(
+          ["[mcp_servers.linear]", 'command = "npx"', 'args = ["@linear/mcp@latest"]'].join("\n"),
+        );
+        const issues = yield* getCodexLinearMcpIssue;
+        assert.deepStrictEqual(issues, []);
+      }),
     );
   });
 

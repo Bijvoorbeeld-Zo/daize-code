@@ -141,6 +141,7 @@ export function createWsNativeApi(): NativeApi {
         transport.request(WS_METHODS.linearListMyIssues, {
           refresh: input?.refresh ?? false,
         }),
+      startIssue: (input) => transport.request(WS_METHODS.linearStartIssue, input),
     },
     git: {
       pull: (input) => transport.request(WS_METHODS.gitPull, input),
@@ -170,6 +171,8 @@ export function createWsNativeApi(): NativeApi {
     server: {
       getConfig: () => transport.request(WS_METHODS.serverGetConfig),
       upsertKeybinding: (input) => transport.request(WS_METHODS.serverUpsertKeybinding, input),
+      installCodexLinearMcp: (input) =>
+        transport.request(WS_METHODS.serverInstallCodexLinearMcp, input ?? {}),
     },
     orchestration: {
       getSnapshot: () => transport.request(ORCHESTRATION_WS_METHODS.getSnapshot),

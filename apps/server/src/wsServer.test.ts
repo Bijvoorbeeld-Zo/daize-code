@@ -5,7 +5,7 @@ import path from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Exit, Layer, PlatformError, PubSub, Scope, Stream } from "effect";
-import { describe, expect, it, afterEach, vi } from "vitest";
+import { describe, expect, it, afterEach, beforeEach, vi } from "vitest";
 import { createServer } from "./wsServer";
 import WebSocket from "ws";
 import { ServerConfig, type ServerConfigShape } from "./config";
@@ -457,12 +457,27 @@ describe("WebSocket Server", () => {
   let serverScope: Scope.Closeable | null = null;
   const connections: WebSocket[] = [];
   const tempDirs: string[] = [];
+  let originalCodexHome: string | undefined;
+  let originalLinearMcpAuthUrl: string | undefined;
 
   function makeTempDir(prefix: string): string {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
     tempDirs.push(dir);
     return dir;
   }
+
+  beforeEach(() => {
+    originalCodexHome = process.env.CODEX_HOME;
+    originalLinearMcpAuthUrl = process.env.DAIZE_TEST_LINEAR_MCP_AUTH_URL;
+    const codexHome = makeTempDir("daize-test-codex-home-");
+    process.env.CODEX_HOME = codexHome;
+    process.env.DAIZE_TEST_LINEAR_MCP_AUTH_URL = "https://mcp.linear.app/authorize?state=test-auth";
+    fs.writeFileSync(
+      path.join(codexHome, "config.toml"),
+      ["[mcp_servers.linear]", 'command = "npx"', 'args = ["@linear/mcp@latest"]'].join("\n"),
+      "utf8",
+    );
+  });
 
   async function createTestServer(
     options: {
@@ -570,6 +585,16 @@ describe("WebSocket Server", () => {
     connections.length = 0;
     await closeTestServer();
     server = null;
+    if (originalCodexHome !== undefined) {
+      process.env.CODEX_HOME = originalCodexHome;
+    } else {
+      delete process.env.CODEX_HOME;
+    }
+    if (originalLinearMcpAuthUrl !== undefined) {
+      process.env.DAIZE_TEST_LINEAR_MCP_AUTH_URL = originalLinearMcpAuthUrl;
+    } else {
+      delete process.env.DAIZE_TEST_LINEAR_MCP_AUTH_URL;
+    }
     for (const dir of tempDirs.splice(0, tempDirs.length)) {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -985,6 +1010,46 @@ describe("WebSocket Server", () => {
     expect(successPush.data).toEqual({ issues: [], providers: defaultProviderStatuses });
   });
 
+  it("includes the missing Linear MCP issue in server.getConfig", async () => {
+    const stateDir = makeTempDir("daize-state-linear-mcp-");
+    const codexHome = makeTempDir("daize-codex-home-");
+    const originalCodexHome = process.env.CODEX_HOME;
+    process.env.CODEX_HOME = codexHome;
+    fs.writeFileSync(
+      path.join(codexHome, "config.toml"),
+      ["[mcp_servers.playwright]", 'command = "npx"', 'args = ["@playwright/mcp@latest"]'].join(
+        "\n",
+      ),
+      "utf8",
+    );
+
+    try {
+      server = await createTestServer({ cwd: "/my/workspace", stateDir });
+      const addr = server.address();
+      const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+      const [ws] = await connectAndAwaitWelcome(port);
+      connections.push(ws);
+
+      const response = await sendRequest(ws, WS_METHODS.serverGetConfig);
+      expect(response.error).toBeUndefined();
+      expect(response.result).toMatchObject({
+        issues: [
+          {
+            kind: "codex.linear-mcp-missing",
+            message: expect.any(String),
+          },
+        ],
+      });
+    } finally {
+      if (originalCodexHome !== undefined) {
+        process.env.CODEX_HOME = originalCodexHome;
+      } else {
+        delete process.env.CODEX_HOME;
+      }
+    }
+  });
+
   it("routes shell.openInEditor through the injected open service", async () => {
     const openCalls: Array<{ cwd: string; editor: string }> = [];
     const openService: OpenShape = {
@@ -1077,6 +1142,25 @@ describe("WebSocket Server", () => {
           ],
           syncedAt: "2026-03-19T10:00:00.000Z",
         }),
+      startIssue: (input) =>
+        Effect.succeed({
+          issue: {
+            id: input.issueId,
+            identifier: "ENG-123",
+            title: "Implement Linear tasks",
+            project: {
+              id: "linear-project-1",
+              name: "Daize",
+              icon: "triangle",
+            },
+            status: {
+              name: "In Progress",
+              color: null,
+            },
+            assigneeName: "Jane Doe",
+          },
+          syncedAt: "2026-03-19T10:00:00.000Z",
+        }),
     };
 
     server = await createTestServer({ cwd: "/my/workspace", linearService });
@@ -1152,6 +1236,29 @@ describe("WebSocket Server", () => {
       syncedAt: "2026-03-19T10:00:00.000Z",
     });
 
+    const startIssueResponse = await sendRequest(ws, WS_METHODS.linearStartIssue, {
+      issueId: "issue-1",
+    });
+    expect(startIssueResponse.error).toBeUndefined();
+    expect(startIssueResponse.result).toEqual({
+      issue: {
+        id: "issue-1",
+        identifier: "ENG-123",
+        title: "Implement Linear tasks",
+        project: {
+          id: "linear-project-1",
+          name: "Daize",
+          icon: "triangle",
+        },
+        status: {
+          name: "In Progress",
+          color: null,
+        },
+        assigneeName: "Jane Doe",
+      },
+      syncedAt: "2026-03-19T10:00:00.000Z",
+    });
+
     const disconnectResponse = await sendRequest(ws, WS_METHODS.linearDisconnect);
     expect(disconnectResponse.error).toBeUndefined();
     expect(disconnectResponse.result).toEqual({
@@ -1163,6 +1270,16 @@ describe("WebSocket Server", () => {
         lastSyncAt: null,
         message: null,
       },
+    });
+
+    const installLinearMcpResponse = await sendRequest(ws, WS_METHODS.serverInstallCodexLinearMcp);
+    expect(installLinearMcpResponse.error).toBeUndefined();
+    expect(installLinearMcpResponse.result).toEqual({
+      configPath: expect.any(String),
+      changed: false,
+      authStarted: true,
+      browserOpened: false,
+      authUrl: "https://mcp.linear.app/authorize?state=test-auth",
     });
   });
 

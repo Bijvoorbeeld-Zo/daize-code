@@ -48,6 +48,11 @@ export const LinearListIssuesInput = Schema.Struct({
 });
 export type LinearListIssuesInput = typeof LinearListIssuesInput.Type;
 
+export const LinearStartIssueInput = Schema.Struct({
+  issueId: TrimmedNonEmptyString,
+});
+export type LinearStartIssueInput = typeof LinearStartIssueInput.Type;
+
 export const LinearListIssuesResult = Schema.Struct({
   issues: Schema.Array(LinearIssueSummary),
   syncedAt: IsoDateTime,
@@ -59,6 +64,12 @@ export const LinearListProjectsResult = Schema.Struct({
   syncedAt: IsoDateTime,
 });
 export type LinearListProjectsResult = typeof LinearListProjectsResult.Type;
+
+export const LinearStartIssueResult = Schema.Struct({
+  issue: LinearIssueSummary,
+  syncedAt: IsoDateTime,
+});
+export type LinearStartIssueResult = typeof LinearStartIssueResult.Type;
 
 export const LinearConnectInput = Schema.Struct({
   apiKey: TrimmedNonEmptyString.check(Schema.isMaxLength(4096)),

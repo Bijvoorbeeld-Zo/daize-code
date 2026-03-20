@@ -6,6 +6,8 @@ import type {
   LinearListIssuesInput,
   LinearListIssuesResult,
   LinearListProjectsResult,
+  LinearStartIssueInput,
+  LinearStartIssueResult,
 } from "@daize/contracts";
 import { ServiceMap } from "effect";
 import type { Effect } from "effect";
@@ -22,6 +24,9 @@ export interface LinearServiceShape {
   readonly listMyIssues: (
     input: LinearListIssuesInput,
   ) => Effect.Effect<LinearListIssuesResult, LinearServiceError>;
+  readonly startIssue: (
+    input: LinearStartIssueInput,
+  ) => Effect.Effect<LinearStartIssueResult, LinearServiceError>;
 }
 
 export class LinearService extends ServiceMap.Service<LinearService, LinearServiceShape>()(
