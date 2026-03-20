@@ -1,6 +1,8 @@
 import type { GitBranch } from "@daize/contracts";
+import { Schema } from "effect";
 
-export type EnvMode = "local" | "worktree";
+export const EnvMode = Schema.Literals(["local", "worktree"]);
+export type EnvMode = typeof EnvMode.Type;
 
 export function resolveEffectiveEnvMode(input: {
   activeWorktreePath: string | null;
