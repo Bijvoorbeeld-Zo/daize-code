@@ -45,8 +45,12 @@ export const AppSettingsSchema = Schema.Struct({
   timestampFormat: TimestampFormat.pipe(withDefaults(() => DEFAULT_TIMESTAMP_FORMAT)),
   customCodexModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customClaudeModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
-  taskStartModel: Schema.optional(TrimmedNonEmptyString),
-  textGenerationModel: Schema.optional(TrimmedNonEmptyString),
+  taskStartModel: Schema.optional(TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(() => undefined),
+  ),
+  textGenerationModel: Schema.optional(TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(() => undefined),
+  ),
 });
 export type AppSettings = typeof AppSettingsSchema.Type;
 export interface AppModelOption {

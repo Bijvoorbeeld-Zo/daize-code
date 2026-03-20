@@ -137,6 +137,7 @@ describe("inferProviderForModel", () => {
 
   it("treats claude-prefixed custom slugs as claude", () => {
     expect(inferProviderForModel("claude-custom-internal")).toBe("claudeAgent");
+    expect(inferProviderForModel("claude/custom-internal")).toBe("claudeAgent");
   });
 });
 
