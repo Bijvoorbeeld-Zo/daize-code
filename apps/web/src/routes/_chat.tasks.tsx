@@ -19,11 +19,25 @@ import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
+import {
+  Select,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 import { toastManager } from "../components/ui/toast";
 import {
   buildLinearIssueStartPrompt,
   findLinkedProjectForLinearIssue,
 } from "../lib/linearIssueStart";
+import {
+  filterLinearIssuesByProject,
+  getTasksProjectFilterOptions,
+  parseTasksRouteSearch,
+  resolveTasksProjectFilter,
+  TASKS_PROJECT_FILTER_ALL,
+} from "../lib/tasksProjectFilter";
 import { cn, newCommandId, newMessageId, newThreadId } from "../lib/utils";
 import { readNativeApi } from "../nativeApi";
 
@@ -109,6 +123,7 @@ function getProviderLabel(provider: ProviderKind): string {
 }
 
 function TasksRouteView() {
+  const search = Route.useSearch();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { settings } = useAppSettings();
@@ -151,17 +166,28 @@ function TasksRouteView() {
     serverConfigQuery.data?.issues.find(
       (issue) => issue.kind === "linear-mcp-missing" && issue.provider === selectedTaskProvider,
     ) ?? null;
+  const projectFilterOptions = useMemo(
+    () => getTasksProjectFilterOptions(linearIssuesQuery.data?.issues ?? []),
+    [linearIssuesQuery.data?.issues],
+  );
+  const selectedProjectFilter = useMemo(
+    () => resolveTasksProjectFilter(search.project, projectFilterOptions),
+    [projectFilterOptions, search.project],
+  );
+  const filteredIssues = useMemo(
+    () => filterLinearIssuesByProject(linearIssuesQuery.data?.issues ?? [], selectedProjectFilter),
+    [linearIssuesQuery.data?.issues, selectedProjectFilter],
+  );
   const groupedIssues = useMemo(() => {
-    const issues = linearIssuesQuery.data?.issues ?? [];
     const groups = new Map<
       string,
       {
         statusName: string;
-        issues: Array<(typeof issues)[number]>;
+        issues: Array<(typeof filteredIssues)[number]>;
       }
     >();
 
-    for (const issue of issues) {
+    for (const issue of filteredIssues) {
       const existing = groups.get(issue.status.name);
       if (existing) {
         existing.issues.push(issue);
@@ -175,7 +201,7 @@ function TasksRouteView() {
     }
 
     return Array.from(groups.values());
-  }, [linearIssuesQuery.data?.issues]);
+  }, [filteredIssues]);
 
   const handleInstallLinearMcp = async (): Promise<void> => {
     const api = readNativeApi();
@@ -354,21 +380,62 @@ function TasksRouteView() {
                   Open issues assigned to your connected Linear account.
                 </p>
               </div>
-              <Button
-                size="xs"
-                variant="outline"
-                onClick={() => {
-                  void queryClient.invalidateQueries({ queryKey: linearQueryKeys.all });
-                }}
-                disabled={
-                  linearConnectionQuery.isLoading ||
-                  linearIssuesQuery.isLoading ||
-                  linearConnection?.status !== "connected"
-                }
-              >
-                <RefreshCwIcon className="size-3.5" />
-                Refresh
-              </Button>
+              <div className="flex items-center gap-2">
+                {linearConnection?.status === "connected" &&
+                (linearIssuesQuery.data?.issues.length ?? 0) > 0 ? (
+                  <Select
+                    value={selectedProjectFilter}
+                    onValueChange={(value) => {
+                      const nextProjectFilter = value ?? TASKS_PROJECT_FILTER_ALL;
+
+                      void navigate({
+                        to: "/tasks",
+                        search: (previous) => ({
+                          ...previous,
+                          project:
+                            nextProjectFilter !== TASKS_PROJECT_FILTER_ALL
+                              ? nextProjectFilter
+                              : undefined,
+                        }),
+                      });
+                    }}
+                  >
+                    <SelectTrigger
+                      size="sm"
+                      className="w-[220px]"
+                      aria-label="Filter tasks by project"
+                    >
+                      <SelectValue placeholder="All projects">
+                        {projectFilterOptions.find(
+                          (option) => option.value === selectedProjectFilter,
+                        )?.label ?? "All projects"}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup>
+                      {projectFilterOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label} ({option.count})
+                        </SelectItem>
+                      ))}
+                    </SelectPopup>
+                  </Select>
+                ) : null}
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={() => {
+                    void queryClient.invalidateQueries({ queryKey: linearQueryKeys.all });
+                  }}
+                  disabled={
+                    linearConnectionQuery.isLoading ||
+                    linearIssuesQuery.isLoading ||
+                    linearConnection?.status !== "connected"
+                  }
+                >
+                  <RefreshCwIcon className="size-3.5" />
+                  Refresh
+                </Button>
+              </div>
             </div>
 
             {linearConnectionQuery.isLoading ? <TasksLoadingState /> : null}
@@ -496,7 +563,7 @@ function TasksRouteView() {
               <div className="overflow-hidden rounded-xl border border-border">
                 <div className="flex items-center justify-between border-b border-border bg-card px-4 py-2">
                   <p className="text-xs font-medium text-foreground">
-                    {linearIssuesQuery.data.issues.length} open issue
+                    {filteredIssues.length} of {linearIssuesQuery.data.issues.length} open issue
                     {linearIssuesQuery.data.issues.length === 1 ? "" : "s"}
                   </p>
                   <p className="text-xs text-muted-foreground">
@@ -504,121 +571,135 @@ function TasksRouteView() {
                     {formatTimestamp(linearIssuesQuery.data.syncedAt, settings.timestampFormat)}
                   </p>
                 </div>
-                <div className="divide-y divide-border">
-                  {groupedIssues.map((group) => {
-                    const statusClasses = getLinearStatusClasses(group.statusName);
+                {filteredIssues.length === 0 ? (
+                  <div className="px-4 py-6 text-sm text-muted-foreground">
+                    No issues match the selected workspace filter.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border">
+                    {groupedIssues.map((group) => {
+                      const statusClasses = getLinearStatusClasses(group.statusName);
 
-                    return (
-                      <section key={group.statusName}>
-                        <div className="flex items-center justify-between border-b border-border/70 bg-muted/25 px-4 py-2">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={cn("size-2 rounded-full", statusClasses.groupDotClassName)}
-                            />
-                            <span
-                              className={cn(
-                                "text-xs font-medium",
-                                statusClasses.groupTextClassName,
-                              )}
-                            >
-                              {group.statusName}
+                      return (
+                        <section key={group.statusName}>
+                          <div className="flex items-center justify-between border-b border-border/70 bg-muted/25 px-4 py-2">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={cn(
+                                  "size-2 rounded-full",
+                                  statusClasses.groupDotClassName,
+                                )}
+                              />
+                              <span
+                                className={cn(
+                                  "text-xs font-medium",
+                                  statusClasses.groupTextClassName,
+                                )}
+                              >
+                                {group.statusName}
+                              </span>
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {group.issues.length} issue{group.issues.length === 1 ? "" : "s"}
                             </span>
                           </div>
-                          <span className="text-xs text-muted-foreground">
-                            {group.issues.length} issue{group.issues.length === 1 ? "" : "s"}
-                          </span>
-                        </div>
-                        <div className="divide-y divide-border/70">
-                          {group.issues.map((issue) => {
-                            const issueStatusClasses = getLinearStatusClasses(issue.status.name);
-                            const linkedProject = findLinkedProjectForLinearIssue(projects, issue);
-                            const issueProvider =
-                              linkedProject === null
-                                ? selectedTaskProvider
-                                : resolveThreadStartModelSelection({
-                                    selectedModel: settings.defaultModel,
-                                    projectModel: linkedProject.model,
-                                    customCodexModels: settings.customCodexModels,
-                                    customClaudeModels: settings.customClaudeModels,
-                                  }).provider;
-                            const missingLinearMcpForIssue =
-                              serverConfigQuery.data?.issues.find(
-                                (configIssue) =>
-                                  configIssue.kind === "linear-mcp-missing" &&
-                                  configIssue.provider === issueProvider,
-                              ) ?? null;
+                          <div className="divide-y divide-border/70">
+                            {group.issues.map((issue) => {
+                              const issueStatusClasses = getLinearStatusClasses(issue.status.name);
+                              const linkedProject = findLinkedProjectForLinearIssue(
+                                projects,
+                                issue,
+                              );
+                              const issueProvider =
+                                linkedProject === null
+                                  ? selectedTaskProvider
+                                  : resolveThreadStartModelSelection({
+                                      selectedModel: settings.defaultModel,
+                                      projectModel: linkedProject.model,
+                                      customCodexModels: settings.customCodexModels,
+                                      customClaudeModels: settings.customClaudeModels,
+                                    }).provider;
+                              const missingLinearMcpForIssue =
+                                serverConfigQuery.data?.issues.find(
+                                  (configIssue) =>
+                                    configIssue.kind === "linear-mcp-missing" &&
+                                    configIssue.provider === issueProvider,
+                                ) ?? null;
 
-                            return (
-                              <div
-                                key={issue.id}
-                                className="grid grid-cols-[90px_minmax(0,1fr)_140px_128px_92px] items-center gap-4 px-4 py-3"
-                              >
-                                <span className="text-xs font-medium text-foreground/80">
-                                  {issue.identifier}
-                                </span>
-                                <div className="min-w-0">
-                                  <p className="truncate text-sm text-foreground">{issue.title}</p>
-                                  <p className="truncate text-xs text-muted-foreground">
-                                    {issue.project?.name ?? "No Linear project"}
-                                  </p>
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="truncate text-xs text-foreground/80">
-                                    {issue.project?.id
-                                      ? (projectNameByLinearProjectId.get(issue.project.id) ??
-                                        "Not linked")
-                                      : "No linked project"}
-                                  </p>
-                                </div>
-                                <div className="justify-self-end">
-                                  <span
-                                    className={cn(
-                                      "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium",
-                                      issueStatusClasses.badgeClassName,
-                                    )}
-                                  >
+                              return (
+                                <div
+                                  key={issue.id}
+                                  className="grid grid-cols-[90px_minmax(0,1fr)_140px_128px_92px] items-center gap-4 px-4 py-3"
+                                >
+                                  <span className="text-xs font-medium text-foreground/80">
+                                    {issue.identifier}
+                                  </span>
+                                  <div className="min-w-0">
+                                    <p className="truncate text-sm text-foreground">
+                                      {issue.title}
+                                    </p>
+                                    <p className="truncate text-xs text-muted-foreground">
+                                      {issue.project?.name ?? "No Linear project"}
+                                    </p>
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="truncate text-xs text-foreground/80">
+                                      {issue.project?.id
+                                        ? (projectNameByLinearProjectId.get(issue.project.id) ??
+                                          "Not linked")
+                                        : "No linked project"}
+                                    </p>
+                                  </div>
+                                  <div className="justify-self-end">
                                     <span
                                       className={cn(
-                                        "size-1.5 rounded-full",
-                                        issueStatusClasses.groupDotClassName,
+                                        "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium",
+                                        issueStatusClasses.badgeClassName,
                                       )}
-                                    />
-                                    {issue.status.name}
-                                  </span>
-                                </div>
-                                <div className="justify-self-end">
-                                  <Button
-                                    size="icon-xs"
-                                    onClick={() => void handleStartIssue(issue)}
-                                    disabled={
-                                      startingIssueId !== null ||
-                                      missingLinearMcpForIssue !== null ||
-                                      linkedProject === null
-                                    }
-                                    aria-label={
-                                      startingIssueId === issue.id
-                                        ? `Starting ${issue.identifier}`
-                                        : `Start ${issue.identifier}`
-                                    }
-                                    title={
-                                      missingLinearMcpForIssue !== null
-                                        ? `Install and connect the Linear MCP in ${getProviderLabel(issueProvider)} first`
-                                        : linkedProject === null
-                                          ? "Link this Linear project in Settings first"
+                                    >
+                                      <span
+                                        className={cn(
+                                          "size-1.5 rounded-full",
+                                          issueStatusClasses.groupDotClassName,
+                                        )}
+                                      />
+                                      {issue.status.name}
+                                    </span>
+                                  </div>
+                                  <div className="justify-self-end">
+                                    <Button
+                                      size="icon-xs"
+                                      onClick={() => void handleStartIssue(issue)}
+                                      disabled={
+                                        startingIssueId !== null ||
+                                        missingLinearMcpForIssue !== null ||
+                                        linkedProject === null
+                                      }
+                                      aria-label={
+                                        startingIssueId === issue.id
+                                          ? `Starting ${issue.identifier}`
                                           : `Start ${issue.identifier}`
-                                    }
-                                  >
-                                    <PlayIcon className="size-3.5" />
-                                  </Button>
+                                      }
+                                      title={
+                                        missingLinearMcpForIssue !== null
+                                          ? `Install and connect the Linear MCP in ${getProviderLabel(issueProvider)} first`
+                                          : linkedProject === null
+                                            ? "Link this Linear project in Settings first"
+                                            : `Start ${issue.identifier}`
+                                      }
+                                    >
+                                      <PlayIcon className="size-3.5" />
+                                    </Button>
+                                  </div>
                                 </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </section>
-                    );
-                  })}
-                </div>
+                              );
+                            })}
+                          </div>
+                        </section>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             ) : null}
           </div>
@@ -629,5 +710,6 @@ function TasksRouteView() {
 }
 
 export const Route = createFileRoute("/_chat/tasks")({
+  validateSearch: (search) => parseTasksRouteSearch(search),
   component: TasksRouteView,
 });
