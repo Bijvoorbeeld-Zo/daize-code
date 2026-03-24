@@ -45,6 +45,10 @@ export const AppSettingsSchema = Schema.Struct({
   timestampFormat: TimestampFormat.pipe(withDefaults(() => DEFAULT_TIMESTAMP_FORMAT)),
   customCodexModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customClaudeModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
+  defaultModel: Schema.optional(TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(() => undefined),
+  ),
+  // Legacy key kept for localStorage migration from the old task-specific preference.
   taskStartModel: Schema.optional(TrimmedNonEmptyString).pipe(
     Schema.withDecodingDefault(() => undefined),
   ),
@@ -58,6 +62,17 @@ export interface AppModelOption {
   name: string;
   isCustom: boolean;
 }
+
+export interface AppModelOptionGroup {
+  provider: ProviderKind;
+  label: string;
+  options: AppModelOption[];
+}
+
+const APP_MODEL_GROUP_LABELS: Record<ProviderKind, string> = {
+  codex: "Codex",
+  claudeAgent: "Claude",
+};
 
 const DEFAULT_APP_SETTINGS = AppSettingsSchema.makeUnsafe({});
 
@@ -91,10 +106,23 @@ export function normalizeCustomModelSlugs(
 }
 
 function normalizeAppSettings(settings: AppSettings): AppSettings {
+  const normalizedDefaultModel = (() => {
+    const candidate = settings.defaultModel ?? settings.taskStartModel;
+    const provider = inferProviderForModel(candidate);
+    return normalizeModelSlug(candidate, provider) ?? undefined;
+  })();
+  const normalizedTextGenerationModel = (() => {
+    const provider = inferProviderForModel(settings.textGenerationModel);
+    return normalizeModelSlug(settings.textGenerationModel, provider) ?? undefined;
+  })();
+
   return {
     ...settings,
     customCodexModels: normalizeCustomModelSlugs(settings.customCodexModels, "codex"),
     customClaudeModels: normalizeCustomModelSlugs(settings.customClaudeModels, "claudeAgent"),
+    defaultModel: normalizedDefaultModel,
+    taskStartModel: undefined,
+    textGenerationModel: normalizedTextGenerationModel,
   };
 }
 export function getAppModelOptions(
@@ -134,6 +162,39 @@ export function getAppModelOptions(
   return options;
 }
 
+export function getAppModelOptionsByProvider(input: {
+  customCodexModels: readonly string[];
+  customClaudeModels: readonly string[];
+  selectedModel?: string | null | undefined;
+}): Record<ProviderKind, AppModelOption[]> {
+  const selectedProvider = inferProviderForModel(input.selectedModel);
+  return {
+    codex: getAppModelOptions(
+      "codex",
+      input.customCodexModels,
+      selectedProvider === "codex" ? input.selectedModel : undefined,
+    ),
+    claudeAgent: getAppModelOptions(
+      "claudeAgent",
+      input.customClaudeModels,
+      selectedProvider === "claudeAgent" ? input.selectedModel : undefined,
+    ),
+  };
+}
+
+export function getAppModelOptionGroups(input: {
+  customCodexModels: readonly string[];
+  customClaudeModels: readonly string[];
+  selectedModel?: string | null | undefined;
+}): AppModelOptionGroup[] {
+  const optionsByProvider = getAppModelOptionsByProvider(input);
+  return (["codex", "claudeAgent"] as const).map((provider) => ({
+    provider,
+    label: APP_MODEL_GROUP_LABELS[provider],
+    options: optionsByProvider[provider],
+  }));
+}
+
 export function resolveAppModelSelection(
   provider: ProviderKind,
   customModels: readonly string[],
@@ -166,7 +227,7 @@ export function resolveAppModelSelection(
   );
 }
 
-export function resolveTaskStartModelSelection(input: {
+export function resolveThreadStartModelSelection(input: {
   selectedModel: string | null | undefined;
   projectModel: string | null | undefined;
   customCodexModels: readonly string[];
@@ -189,22 +250,24 @@ export function useAppSettings() {
     DEFAULT_APP_SETTINGS,
     AppSettingsSchema,
   );
+  const normalizedSettings = normalizeAppSettings(settings);
+  const normalizedDefaults = normalizeAppSettings(DEFAULT_APP_SETTINGS);
 
   const updateSettings = useCallback(
     (patch: Partial<AppSettings>) => {
-      setSettings((prev) => normalizeAppSettings({ ...prev, ...patch }));
+      setSettings((prev) => normalizeAppSettings({ ...normalizeAppSettings(prev), ...patch }));
     },
     [setSettings],
   );
 
   const resetSettings = useCallback(() => {
-    setSettings(DEFAULT_APP_SETTINGS);
-  }, [setSettings]);
+    setSettings(normalizedDefaults);
+  }, [normalizedDefaults, setSettings]);
 
   return {
-    settings,
+    settings: normalizedSettings,
     updateSettings,
     resetSettings,
-    defaults: DEFAULT_APP_SETTINGS,
+    defaults: normalizedDefaults,
   } as const;
 }

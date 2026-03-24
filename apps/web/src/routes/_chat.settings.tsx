@@ -8,7 +8,7 @@ import {
   DEFAULT_GIT_TEXT_GENERATION_MODEL,
 } from "@daize/contracts";
 import { getModelOptions, normalizeModelSlug } from "@daize/shared/model";
-import { getAppModelOptions, MAX_CUSTOM_MODEL_LENGTH, useAppSettings } from "../appSettings";
+import { getAppModelOptionGroups, MAX_CUSTOM_MODEL_LENGTH, useAppSettings } from "../appSettings";
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
 import { isElectron } from "../env";
 import { useTheme } from "../hooks/useTheme";
@@ -95,7 +95,7 @@ const LINEAR_STATUS_LABELS: Record<LinearConnectionStatus, string> = {
 } as const;
 
 const UNLINKED_LINEAR_PROJECT_VALUE = "__unlinked__";
-const PROJECT_DEFAULT_TASK_START_MODEL_VALUE = "__project_default_task_start_model__";
+const PROJECT_DEFAULT_MODEL_VALUE = "__project_default_model__";
 
 function linearStatusVariant(status: LinearConnectionStatus): "default" | "error" | "success" {
   switch (status) {
@@ -187,30 +187,28 @@ function SettingsRouteView() {
     message: null,
   };
 
-  const gitTextGenerationModelOptions = getAppModelOptions(
-    "codex",
-    settings.customCodexModels,
-    settings.textGenerationModel,
+  const gitTextGenerationModelGroups = getAppModelOptionGroups({
+    customCodexModels: settings.customCodexModels,
+    customClaudeModels: settings.customClaudeModels,
+    selectedModel: settings.textGenerationModel,
+  });
+  const defaultModelGroups = getAppModelOptionGroups({
+    customCodexModels: settings.customCodexModels,
+    customClaudeModels: settings.customClaudeModels,
+    selectedModel: settings.defaultModel,
+  });
+  const gitTextGenerationModelOptions = gitTextGenerationModelGroups.flatMap(
+    (group) => group.options,
   );
-  const taskStartCodexModelOptions = getAppModelOptions(
-    "codex",
-    settings.customCodexModels,
-    settings.taskStartModel,
-  );
-  const taskStartClaudeModelOptions = getAppModelOptions(
-    "claudeAgent",
-    settings.customClaudeModels,
-    settings.taskStartModel,
-  );
+  const defaultModelOptions = defaultModelGroups.flatMap((group) => group.options);
   const selectedGitTextGenerationModelLabel =
     gitTextGenerationModelOptions.find(
       (option) =>
         option.slug === (settings.textGenerationModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL),
     )?.name ?? settings.textGenerationModel;
-  const selectedTaskStartModelLabel =
-    taskStartCodexModelOptions.find((option) => option.slug === settings.taskStartModel)?.name ??
-    taskStartClaudeModelOptions.find((option) => option.slug === settings.taskStartModel)?.name ??
-    settings.taskStartModel;
+  const selectedDefaultModelLabel =
+    defaultModelOptions.find((option) => option.slug === settings.defaultModel)?.name ??
+    settings.defaultModel;
 
   const openKeybindingsFile = useCallback(() => {
     if (!keybindingsConfigPath) return;
@@ -677,10 +675,21 @@ function SettingsRouteView() {
                     <SelectValue>{selectedGitTextGenerationModelLabel}</SelectValue>
                   </SelectTrigger>
                   <SelectPopup align="end">
-                    {gitTextGenerationModelOptions.map((option) => (
-                      <SelectItem key={option.slug} value={option.slug}>
-                        {option.name}
-                      </SelectItem>
+                    {gitTextGenerationModelGroups.map((group, index) => (
+                      <div key={group.provider}>
+                        {index > 0 ? <SelectSeparator /> : null}
+                        <SelectGroup>
+                          <SelectGroupLabel>{group.label}</SelectGroupLabel>
+                          {group.options.map((option) => (
+                            <SelectItem
+                              key={`${group.provider}:${option.slug}`}
+                              value={option.slug}
+                            >
+                              {option.name}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </div>
                     ))}
                   </SelectPopup>
                 </Select>
@@ -705,67 +714,61 @@ function SettingsRouteView() {
 
             <section className="rounded-2xl border border-border bg-card p-5">
               <div className="mb-4">
-                <h2 className="text-sm font-medium text-foreground">Tasks</h2>
+                <h2 className="text-sm font-medium text-foreground">Models</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Choose which model is used when starting a task from the Tasks page.
+                  Choose which model new chats and task starts should use by default.
                 </p>
               </div>
 
               <div className="flex flex-col gap-4 rounded-lg border border-border bg-background px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-foreground">Task start model</p>
+                  <p className="text-sm font-medium text-foreground">Default model</p>
                   <p className="text-xs text-muted-foreground">
                     Leave this on project default to use the linked project model instead.
                   </p>
                 </div>
                 <Select
-                  value={settings.taskStartModel ?? PROJECT_DEFAULT_TASK_START_MODEL_VALUE}
+                  value={settings.defaultModel ?? PROJECT_DEFAULT_MODEL_VALUE}
                   onValueChange={(value) => {
                     updateSettings({
-                      taskStartModel:
-                        !value || value === PROJECT_DEFAULT_TASK_START_MODEL_VALUE
-                          ? undefined
-                          : value,
+                      defaultModel:
+                        !value || value === PROJECT_DEFAULT_MODEL_VALUE ? undefined : value,
                     });
                   }}
                 >
-                  <SelectTrigger className="w-full shrink-0 sm:w-56" aria-label="Task start model">
-                    <SelectValue>{selectedTaskStartModelLabel ?? "Project default"}</SelectValue>
+                  <SelectTrigger className="w-full shrink-0 sm:w-56" aria-label="Default model">
+                    <SelectValue>{selectedDefaultModelLabel ?? "Project default"}</SelectValue>
                   </SelectTrigger>
                   <SelectPopup align="end">
-                    <SelectItem value={PROJECT_DEFAULT_TASK_START_MODEL_VALUE}>
-                      Project default
-                    </SelectItem>
-                    <SelectSeparator />
-                    <SelectGroup>
-                      <SelectGroupLabel>Codex</SelectGroupLabel>
-                      {taskStartCodexModelOptions.map((option) => (
-                        <SelectItem key={`task-start-codex:${option.slug}`} value={option.slug}>
-                          {option.name}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                    <SelectSeparator />
-                    <SelectGroup>
-                      <SelectGroupLabel>Claude</SelectGroupLabel>
-                      {taskStartClaudeModelOptions.map((option) => (
-                        <SelectItem key={`task-start-claude:${option.slug}`} value={option.slug}>
-                          {option.name}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
+                    <SelectItem value={PROJECT_DEFAULT_MODEL_VALUE}>Project default</SelectItem>
+                    {defaultModelGroups.map((group) => (
+                      <div key={group.provider}>
+                        <SelectSeparator />
+                        <SelectGroup>
+                          <SelectGroupLabel>{group.label}</SelectGroupLabel>
+                          {group.options.map((option) => (
+                            <SelectItem
+                              key={`${group.provider}:${option.slug}`}
+                              value={option.slug}
+                            >
+                              {option.name}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </div>
+                    ))}
                   </SelectPopup>
                 </Select>
               </div>
 
-              {settings.taskStartModel !== defaults.taskStartModel ? (
+              {settings.defaultModel !== defaults.defaultModel ? (
                 <div className="mt-3 flex justify-end">
                   <Button
                     size="xs"
                     variant="outline"
                     onClick={() =>
                       updateSettings({
-                        taskStartModel: defaults.taskStartModel,
+                        defaultModel: defaults.defaultModel,
                       })
                     }
                   >

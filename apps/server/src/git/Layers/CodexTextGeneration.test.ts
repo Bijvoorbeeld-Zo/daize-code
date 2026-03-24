@@ -1,18 +1,43 @@
+import type {
+  Options as ClaudeQueryOptions,
+  Query as ClaudeQueryRuntime,
+  SDKMessage,
+} from "@anthropic-ai/claude-agent-sdk";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
 import { Effect, FileSystem, Layer, Path } from "effect";
 import { expect } from "vitest";
 
 import { ServerConfig } from "../../config.ts";
-import { CodexTextGenerationLive } from "./CodexTextGeneration.ts";
+import { CodexTextGenerationLive, makeCodexTextGenerationLive } from "./CodexTextGeneration.ts";
 import { TextGenerationError } from "../Errors.ts";
 import { TextGeneration } from "../Services/TextGeneration.ts";
 
-const makeCodexTextGenerationTestLayer = (stateDir: string) =>
-  CodexTextGenerationLive.pipe(
+const makeCodexTextGenerationTestLayer = (
+  stateDir: string,
+  options?: Parameters<typeof makeCodexTextGenerationLive>[0],
+) =>
+  (options ? makeCodexTextGenerationLive(options) : CodexTextGenerationLive).pipe(
     Layer.provideMerge(ServerConfig.layerTest(process.cwd(), stateDir)),
     Layer.provideMerge(NodeServices.layer),
   );
+
+function makeFakeClaudeQuery(messages: ReadonlyArray<SDKMessage>): ClaudeQueryFactory {
+  return () =>
+    ({
+      async *[Symbol.asyncIterator]() {
+        for (const message of messages) {
+          yield message;
+        }
+      },
+      close() {},
+    }) as ClaudeQueryRuntime;
+}
+
+type ClaudeQueryFactory = (input: {
+  readonly prompt: string;
+  readonly options: ClaudeQueryOptions;
+}) => ClaudeQueryRuntime;
 
 function makeFakeCodexBinary(dir: string) {
   return Effect.gen(function* () {
@@ -508,6 +533,59 @@ it.layer(CodexTextGenerationTestLayer)("CodexTextGenerationLive", (it) => {
           expect(result.left.message).toContain("Codex CLI command failed: codex execution failed");
         }
       }),
+    ),
+  );
+
+  it.effect("routes Claude models through the Claude query runtime", () =>
+    Effect.gen(function* () {
+      const textGeneration = yield* TextGeneration;
+
+      const generated = yield* textGeneration.generateCommitMessage({
+        cwd: process.cwd(),
+        branch: "feature/claude-effect",
+        stagedSummary: "M README.md",
+        stagedPatch: "diff --git a/README.md b/README.md",
+        model: "claude-sonnet-4-6",
+      });
+
+      expect(generated.subject).toBe("Summarize git changes");
+      expect(generated.body).toBe("- verified claude route");
+    }).pipe(
+      Effect.provide(
+        makeCodexTextGenerationTestLayer(process.cwd(), {
+          createClaudeQuery: makeFakeClaudeQuery([
+            {
+              type: "result",
+              subtype: "success",
+              duration_ms: 1,
+              duration_api_ms: 1,
+              is_error: false,
+              num_turns: 1,
+              result: "",
+              stop_reason: null,
+              total_cost_usd: 0,
+              usage: {
+                input_tokens: 0,
+                cache_creation_input_tokens: 0,
+                cache_read_input_tokens: 0,
+                output_tokens: 0,
+                server_tool_use: {
+                  web_search_requests: 0,
+                },
+                service_tier: "standard",
+              },
+              modelUsage: {},
+              permission_denials: [],
+              structured_output: {
+                subject: "Summarize git changes",
+                body: "- verified claude route",
+              },
+              uuid: "sdk-result-1",
+              session_id: "sdk-session-1",
+            } as unknown as SDKMessage,
+          ]),
+        }),
+      ),
     ),
   );
 });

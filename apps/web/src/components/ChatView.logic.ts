@@ -1,7 +1,7 @@
 import { ProjectId, type ProviderKind, type ThreadId } from "@daize/contracts";
 import { type ChatMessage, type Thread } from "../types";
 import { randomUUID } from "~/lib/utils";
-import { getAppModelOptions } from "../appSettings";
+import { getAppModelOptionsByProvider } from "../appSettings";
 import { type ComposerImageAttachment, type DraftThreadState } from "../composerDraftStore";
 import { Schema } from "effect";
 import {
@@ -124,11 +124,9 @@ export function cloneComposerImageForRetry(
 export function getCustomModelOptionsByProvider(settings: {
   customCodexModels: readonly string[];
   customClaudeModels: readonly string[];
+  selectedModel?: string | null | undefined;
 }): Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>> {
-  return {
-    codex: getAppModelOptions("codex", settings.customCodexModels),
-    claudeAgent: getAppModelOptions("claudeAgent", settings.customClaudeModels),
-  };
+  return getAppModelOptionsByProvider(settings);
 }
 
 export function deriveComposerSendState(options: {

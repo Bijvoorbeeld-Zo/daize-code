@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, createFileRoute } from "@tanstack/react-router";
 import { PlayIcon, RefreshCwIcon } from "lucide-react";
 
-import { resolveTaskStartModelSelection, useAppSettings } from "../appSettings";
+import { resolveThreadStartModelSelection, useAppSettings } from "../appSettings";
 import { isElectron } from "../env";
 import {
   linearConnectionQueryOptions,
@@ -225,8 +225,8 @@ function TasksRouteView() {
 
     const createdAt = new Date().toISOString();
     const threadId = newThreadId();
-    const { provider, model } = resolveTaskStartModelSelection({
-      selectedModel: settings.taskStartModel,
+    const { provider, model } = resolveThreadStartModelSelection({
+      selectedModel: settings.defaultModel,
       projectModel: linkedProject.model,
       customCodexModels: settings.customCodexModels,
       customClaudeModels: settings.customClaudeModels,

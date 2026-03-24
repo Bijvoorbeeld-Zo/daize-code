@@ -126,7 +126,11 @@ import {
 import { SidebarTrigger } from "./ui/sidebar";
 import { newCommandId, newMessageId, newThreadId } from "~/lib/utils";
 import { readNativeApi } from "~/nativeApi";
-import { resolveAppModelSelection, useAppSettings } from "../appSettings";
+import {
+  resolveAppModelSelection,
+  resolveThreadStartModelSelection,
+  useAppSettings,
+} from "../appSettings";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import {
   type ComposerImageAttachment,
@@ -456,17 +460,33 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const serverThread = threads.find((t) => t.id === threadId);
   const fallbackDraftProject = projects.find((project) => project.id === draftThread?.projectId);
   const localDraftError = serverThread ? null : (localDraftErrorsByThreadId[threadId] ?? null);
+  const preferredThreadStartModel = useMemo(
+    () =>
+      resolveThreadStartModelSelection({
+        selectedModel: settings.defaultModel,
+        projectModel: fallbackDraftProject?.model ?? serverThread?.model ?? null,
+        customCodexModels: settings.customCodexModels,
+        customClaudeModels: settings.customClaudeModels,
+      }),
+    [
+      fallbackDraftProject?.model,
+      serverThread?.model,
+      settings.customClaudeModels,
+      settings.customCodexModels,
+      settings.defaultModel,
+    ],
+  );
   const localDraftThread = useMemo(
     () =>
       draftThread
         ? buildLocalDraftThread(
             threadId,
             draftThread,
-            fallbackDraftProject?.model ?? DEFAULT_MODEL_BY_PROVIDER.codex,
+            preferredThreadStartModel.model,
             localDraftError,
           )
         : undefined,
-    [draftThread, fallbackDraftProject?.model, localDraftError, threadId],
+    [draftThread, localDraftError, preferredThreadStartModel.model, threadId],
   );
   const activeThread = serverThread ?? localDraftThread;
   const runtimeMode =
@@ -591,10 +611,15 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const lockedProvider: ProviderKind | null = hasThreadStarted
     ? (sessionProvider ?? selectedProviderByThreadId ?? null)
     : null;
-  const selectedProvider: ProviderKind = lockedProvider ?? selectedProviderByThreadId ?? "codex";
+  const selectedProvider: ProviderKind =
+    lockedProvider ?? selectedProviderByThreadId ?? preferredThreadStartModel.provider;
   const baseThreadModel = resolveModelSlugForProvider(
     selectedProvider,
-    activeThread?.model ?? activeProject?.model ?? getDefaultModel(selectedProvider),
+    activeThread?.model ??
+      (selectedProvider === preferredThreadStartModel.provider
+        ? preferredThreadStartModel.model
+        : activeProject?.model) ??
+      getDefaultModel(selectedProvider),
   );
   const customModelsByProvider = useMemo(
     () => ({
@@ -675,8 +700,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
   }, [settings.codexBinaryPath, settings.codexHomePath]);
   const selectedModelForPicker = selectedModel;
   const modelOptionsByProvider = useMemo(
-    () => getCustomModelOptionsByProvider(settings),
-    [settings],
+    () =>
+      getCustomModelOptionsByProvider({
+        customCodexModels: settings.customCodexModels,
+        customClaudeModels: settings.customClaudeModels,
+        selectedModel: selectedModelForPicker,
+      }),
+    [selectedModelForPicker, settings.customClaudeModels, settings.customCodexModels],
   );
   const selectedModelForPickerWithCustomFallback = useMemo(() => {
     const currentOptions = modelOptionsByProvider[selectedProvider];

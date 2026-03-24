@@ -4,10 +4,12 @@ import { describe, expect, it } from "vitest";
 import {
   AppSettingsSchema,
   DEFAULT_TIMESTAMP_FORMAT,
+  getAppModelOptionGroups,
   getAppModelOptions,
+  getAppModelOptionsByProvider,
   normalizeCustomModelSlugs,
   resolveAppModelSelection,
-  resolveTaskStartModelSelection,
+  resolveThreadStartModelSelection,
 } from "./appSettings";
 
 describe("normalizeCustomModelSlugs", () => {
@@ -65,6 +67,41 @@ describe("getAppModelOptions", () => {
   });
 });
 
+describe("getAppModelOptionsByProvider", () => {
+  it("includes both codex and claude options from the same shared source", () => {
+    const optionsByProvider = getAppModelOptionsByProvider({
+      customCodexModels: ["custom/internal-model"],
+      customClaudeModels: ["claude/custom-opus"],
+      selectedModel: "claude/custom-opus",
+    });
+
+    expect(optionsByProvider.codex.some((option) => option.slug === "gpt-5.4-mini")).toBe(true);
+    expect(
+      optionsByProvider.claudeAgent.some((option) => option.slug === "claude-sonnet-4-6"),
+    ).toBe(true);
+    expect(optionsByProvider.codex.some((option) => option.slug === "custom/internal-model")).toBe(
+      true,
+    );
+    expect(
+      optionsByProvider.claudeAgent.some((option) => option.slug === "claude/custom-opus"),
+    ).toBe(true);
+  });
+});
+
+describe("getAppModelOptionGroups", () => {
+  it("returns provider groups in a stable order for shared dropdown rendering", () => {
+    const groups = getAppModelOptionGroups({
+      customCodexModels: ["custom/internal-model"],
+      customClaudeModels: ["claude/custom-opus"],
+      selectedModel: "claude/custom-opus",
+    });
+
+    expect(groups.map((group) => group.label)).toEqual(["Codex", "Claude"]);
+    expect(groups[0]?.options.some((option) => option.slug === "custom/internal-model")).toBe(true);
+    expect(groups[1]?.options.some((option) => option.slug === "claude/custom-opus")).toBe(true);
+  });
+});
+
 describe("resolveAppModelSelection", () => {
   it("preserves saved custom model slugs instead of falling back to the default", () => {
     expect(resolveAppModelSelection("codex", ["galapagos-alpha"], "galapagos-alpha")).toBe(
@@ -77,10 +114,10 @@ describe("resolveAppModelSelection", () => {
   });
 });
 
-describe("resolveTaskStartModelSelection", () => {
-  it("falls back to the linked project model when no app-level task model is configured", () => {
+describe("resolveThreadStartModelSelection", () => {
+  it("falls back to the linked project model when no app-level default model is configured", () => {
     expect(
-      resolveTaskStartModelSelection({
+      resolveThreadStartModelSelection({
         selectedModel: null,
         projectModel: "claude-sonnet-4-6",
         customCodexModels: [],
@@ -92,9 +129,9 @@ describe("resolveTaskStartModelSelection", () => {
     });
   });
 
-  it("preserves saved custom task-start models", () => {
+  it("preserves saved custom default models", () => {
     expect(
-      resolveTaskStartModelSelection({
+      resolveThreadStartModelSelection({
         selectedModel: "claude/custom-opus",
         projectModel: "gpt-5.4",
         customCodexModels: [],
@@ -103,6 +140,20 @@ describe("resolveTaskStartModelSelection", () => {
     ).toEqual({
       provider: "claudeAgent",
       model: "claude/custom-opus",
+    });
+  });
+
+  it("infers the provider from the configured default model", () => {
+    expect(
+      resolveThreadStartModelSelection({
+        selectedModel: "claude-sonnet-4.6",
+        projectModel: "gpt-5.4",
+        customCodexModels: [],
+        customClaudeModels: [],
+      }),
+    ).toEqual({
+      provider: "claudeAgent",
+      model: "claude-sonnet-4-6",
     });
   });
 });
@@ -141,7 +192,23 @@ describe("AppSettingsSchema", () => {
       timestampFormat: DEFAULT_TIMESTAMP_FORMAT,
       customCodexModels: [],
       customClaudeModels: [],
+      defaultModel: undefined,
       taskStartModel: undefined,
+    });
+  });
+
+  it("keeps the legacy task start model available for migration", () => {
+    const decode = Schema.decodeSync(Schema.fromJsonString(AppSettingsSchema));
+
+    expect(
+      decode(
+        JSON.stringify({
+          taskStartModel: "claude-sonnet-4-6",
+        }),
+      ),
+    ).toMatchObject({
+      defaultModel: undefined,
+      taskStartModel: "claude-sonnet-4-6",
     });
   });
 });

@@ -1,10 +1,17 @@
 import { randomUUID } from "node:crypto";
 
+import {
+  query,
+  type Options as ClaudeQueryOptions,
+  type Query as ClaudeQueryRuntime,
+  type SDKMessage,
+} from "@anthropic-ai/claude-agent-sdk";
 import { Effect, FileSystem, Layer, Option, Path, Schema, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { DEFAULT_GIT_TEXT_GENERATION_MODEL } from "@daize/contracts";
 import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@daize/shared/git";
+import { inferProviderForModel } from "@daize/shared/model";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
@@ -20,8 +27,18 @@ import {
 
 const CODEX_REASONING_EFFORT = "low";
 const CODEX_TIMEOUT_MS = 180_000;
+const CLAUDE_TIMEOUT_MS = 180_000;
 
-function toCodexOutputJsonSchema(schema: Schema.Top): unknown {
+type ClaudeQueryFactory = (input: {
+  readonly prompt: string;
+  readonly options: ClaudeQueryOptions;
+}) => ClaudeQueryRuntime;
+
+export interface CodexTextGenerationLiveOptions {
+  readonly createClaudeQuery?: ClaudeQueryFactory;
+}
+
+function toOutputJsonSchema(schema: Schema.Top): unknown {
   const document = Schema.toJsonSchemaDocument(schema);
   if (document.definitions && Object.keys(document.definitions).length > 0) {
     return {
@@ -68,6 +85,42 @@ function normalizeCodexError(
   });
 }
 
+function normalizeClaudeError(
+  operation: string,
+  error: unknown,
+  fallback: string,
+): TextGenerationError {
+  if (Schema.is(TextGenerationError)(error)) {
+    return error;
+  }
+
+  if (error instanceof Error) {
+    const lower = error.message.toLowerCase();
+    if (
+      error.message.includes("Command not found: claude") ||
+      lower.includes("spawn claude") ||
+      lower.includes("enoent")
+    ) {
+      return new TextGenerationError({
+        operation,
+        detail: "Claude Code (`claude`) is required but not available on PATH.",
+        cause: error,
+      });
+    }
+    return new TextGenerationError({
+      operation,
+      detail: `${fallback}: ${error.message}`,
+      cause: error,
+    });
+  }
+
+  return new TextGenerationError({
+    operation,
+    detail: fallback,
+    cause: error,
+  });
+}
+
 function limitSection(value: string, maxChars: number): string {
   if (value.length <= maxChars) return value;
   const truncated = value.slice(0, maxChars);
@@ -95,378 +148,495 @@ function sanitizePrTitle(raw: string): string {
   return "Update project changes";
 }
 
-const makeCodexTextGeneration = Effect.gen(function* () {
-  const fileSystem = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const commandSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const serverConfig = yield* Effect.service(ServerConfig);
+const makeCodexTextGeneration = (options?: CodexTextGenerationLiveOptions) =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const commandSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const serverConfig = yield* Effect.service(ServerConfig);
+    const createClaudeQuery =
+      options?.createClaudeQuery ??
+      ((input: { readonly prompt: string; readonly options: ClaudeQueryOptions }) =>
+        query({ prompt: input.prompt, options: input.options }));
 
-  type MaterializedImageAttachments = {
-    readonly imagePaths: ReadonlyArray<string>;
-  };
+    type MaterializedImageAttachments = {
+      readonly imagePaths: ReadonlyArray<string>;
+    };
 
-  const readStreamAsString = <E>(
-    operation: string,
-    stream: Stream.Stream<Uint8Array, E>,
-  ): Effect.Effect<string, TextGenerationError> =>
-    Effect.gen(function* () {
-      let text = "";
-      yield* Stream.runForEach(stream, (chunk) =>
-        Effect.sync(() => {
-          text += Buffer.from(chunk).toString("utf8");
-        }),
-      ).pipe(
-        Effect.mapError((cause) =>
-          normalizeCodexError(operation, cause, "Failed to collect process output"),
-        ),
-      );
-      return text;
-    });
-
-  const tempDir = process.env.TMPDIR ?? process.env.TEMP ?? process.env.TMP ?? "/tmp";
-
-  const writeTempFile = (
-    operation: string,
-    prefix: string,
-    content: string,
-  ): Effect.Effect<string, TextGenerationError> => {
-    const filePath = path.join(tempDir, `daize-${prefix}-${process.pid}-${randomUUID()}.tmp`);
-    return fileSystem.writeFileString(filePath, content).pipe(
-      Effect.mapError(
-        (cause) =>
-          new TextGenerationError({
-            operation,
-            detail: `Failed to write temp file at ${filePath}.`,
-            cause,
+    const readStreamAsString = <E>(
+      operation: string,
+      stream: Stream.Stream<Uint8Array, E>,
+    ): Effect.Effect<string, TextGenerationError> =>
+      Effect.gen(function* () {
+        let text = "";
+        yield* Stream.runForEach(stream, (chunk) =>
+          Effect.sync(() => {
+            text += Buffer.from(chunk).toString("utf8");
           }),
-      ),
-      Effect.as(filePath),
-    );
-  };
-
-  const safeUnlink = (filePath: string): Effect.Effect<void, never> =>
-    fileSystem.remove(filePath).pipe(Effect.catch(() => Effect.void));
-
-  const materializeImageAttachments = (
-    _operation: "generateCommitMessage" | "generatePrContent" | "generateBranchName",
-    attachments: BranchNameGenerationInput["attachments"],
-  ): Effect.Effect<MaterializedImageAttachments, TextGenerationError> =>
-    Effect.gen(function* () {
-      if (!attachments || attachments.length === 0) {
-        return { imagePaths: [] };
-      }
-
-      const imagePaths: string[] = [];
-      for (const attachment of attachments) {
-        if (attachment.type !== "image") {
-          continue;
-        }
-
-        const resolvedPath = resolveAttachmentPath({
-          stateDir: serverConfig.stateDir,
-          attachment,
-        });
-        if (!resolvedPath || !path.isAbsolute(resolvedPath)) {
-          continue;
-        }
-        const fileInfo = yield* fileSystem
-          .stat(resolvedPath)
-          .pipe(Effect.catch(() => Effect.succeed(null)));
-        if (!fileInfo || fileInfo.type !== "File") {
-          continue;
-        }
-        imagePaths.push(resolvedPath);
-      }
-      return { imagePaths };
-    });
-
-  const runCodexJson = <S extends Schema.Top>({
-    operation,
-    cwd,
-    prompt,
-    outputSchemaJson,
-    imagePaths = [],
-    cleanupPaths = [],
-    model,
-  }: {
-    operation: "generateCommitMessage" | "generatePrContent" | "generateBranchName";
-    cwd: string;
-    prompt: string;
-    outputSchemaJson: S;
-    imagePaths?: ReadonlyArray<string>;
-    cleanupPaths?: ReadonlyArray<string>;
-    model?: string;
-  }): Effect.Effect<S["Type"], TextGenerationError, S["DecodingServices"]> =>
-    Effect.gen(function* () {
-      const schemaPath = yield* writeTempFile(
-        operation,
-        "codex-schema",
-        JSON.stringify(toCodexOutputJsonSchema(outputSchemaJson)),
-      );
-      const outputPath = yield* writeTempFile(operation, "codex-output", "");
-
-      const runCodexCommand = Effect.gen(function* () {
-        const command = ChildProcess.make(
-          "codex",
-          [
-            "exec",
-            "--ephemeral",
-            "-s",
-            "read-only",
-            "--model",
-            model ?? DEFAULT_GIT_TEXT_GENERATION_MODEL,
-            "--config",
-            `model_reasoning_effort="${CODEX_REASONING_EFFORT}"`,
-            "--output-schema",
-            schemaPath,
-            "--output-last-message",
-            outputPath,
-            ...imagePaths.flatMap((imagePath) => ["--image", imagePath]),
-            "-",
-          ],
-          {
-            cwd,
-            shell: process.platform === "win32",
-            stdin: {
-              stream: Stream.make(new TextEncoder().encode(prompt)),
-            },
-          },
+        ).pipe(
+          Effect.mapError((cause) =>
+            normalizeCodexError(operation, cause, "Failed to collect process output"),
+          ),
         );
+        return text;
+      });
 
-        const child = yield* commandSpawner
-          .spawn(command)
-          .pipe(
-            Effect.mapError((cause) =>
-              normalizeCodexError(operation, cause, "Failed to spawn Codex CLI process"),
+    const tempDir = process.env.TMPDIR ?? process.env.TEMP ?? process.env.TMP ?? "/tmp";
+
+    const writeTempFile = (
+      operation: string,
+      prefix: string,
+      content: string,
+    ): Effect.Effect<string, TextGenerationError> => {
+      const filePath = path.join(tempDir, `daize-${prefix}-${process.pid}-${randomUUID()}.tmp`);
+      return fileSystem.writeFileString(filePath, content).pipe(
+        Effect.mapError(
+          (cause) =>
+            new TextGenerationError({
+              operation,
+              detail: `Failed to write temp file at ${filePath}.`,
+              cause,
+            }),
+        ),
+        Effect.as(filePath),
+      );
+    };
+
+    const safeUnlink = (filePath: string): Effect.Effect<void, never> =>
+      fileSystem.remove(filePath).pipe(Effect.catch(() => Effect.void));
+
+    const materializeImageAttachments = (
+      _operation: "generateCommitMessage" | "generatePrContent" | "generateBranchName",
+      attachments: BranchNameGenerationInput["attachments"],
+    ): Effect.Effect<MaterializedImageAttachments, TextGenerationError> =>
+      Effect.gen(function* () {
+        if (!attachments || attachments.length === 0) {
+          return { imagePaths: [] };
+        }
+
+        const imagePaths: string[] = [];
+        for (const attachment of attachments) {
+          if (attachment.type !== "image") {
+            continue;
+          }
+
+          const resolvedPath = resolveAttachmentPath({
+            stateDir: serverConfig.stateDir,
+            attachment,
+          });
+          if (!resolvedPath || !path.isAbsolute(resolvedPath)) {
+            continue;
+          }
+          const fileInfo = yield* fileSystem
+            .stat(resolvedPath)
+            .pipe(Effect.catch(() => Effect.succeed(null)));
+          if (!fileInfo || fileInfo.type !== "File") {
+            continue;
+          }
+          imagePaths.push(resolvedPath);
+        }
+        return { imagePaths };
+      });
+
+    const runCodexJson = <S extends Schema.Top>({
+      operation,
+      cwd,
+      prompt,
+      outputSchemaJson,
+      imagePaths = [],
+      cleanupPaths = [],
+      model,
+    }: {
+      operation: "generateCommitMessage" | "generatePrContent" | "generateBranchName";
+      cwd: string;
+      prompt: string;
+      outputSchemaJson: S;
+      imagePaths?: ReadonlyArray<string>;
+      cleanupPaths?: ReadonlyArray<string>;
+      model?: string;
+    }): Effect.Effect<S["Type"], TextGenerationError, S["DecodingServices"]> =>
+      Effect.gen(function* () {
+        const schemaPath = yield* writeTempFile(
+          operation,
+          "codex-schema",
+          JSON.stringify(toOutputJsonSchema(outputSchemaJson)),
+        );
+        const outputPath = yield* writeTempFile(operation, "codex-output", "");
+
+        const runCodexCommand = Effect.gen(function* () {
+          const command = ChildProcess.make(
+            "codex",
+            [
+              "exec",
+              "--ephemeral",
+              "-s",
+              "read-only",
+              "--model",
+              model ?? DEFAULT_GIT_TEXT_GENERATION_MODEL,
+              "--config",
+              `model_reasoning_effort="${CODEX_REASONING_EFFORT}"`,
+              "--output-schema",
+              schemaPath,
+              "--output-last-message",
+              outputPath,
+              ...imagePaths.flatMap((imagePath) => ["--image", imagePath]),
+              "-",
+            ],
+            {
+              cwd,
+              shell: process.platform === "win32",
+              stdin: {
+                stream: Stream.make(new TextEncoder().encode(prompt)),
+              },
+            },
+          );
+
+          const child = yield* commandSpawner
+            .spawn(command)
+            .pipe(
+              Effect.mapError((cause) =>
+                normalizeCodexError(operation, cause, "Failed to spawn Codex CLI process"),
+              ),
+            );
+
+          const [stdout, stderr, exitCode] = yield* Effect.all(
+            [
+              readStreamAsString(operation, child.stdout),
+              readStreamAsString(operation, child.stderr),
+              child.exitCode.pipe(
+                Effect.map((value) => Number(value)),
+                Effect.mapError((cause) =>
+                  normalizeCodexError(operation, cause, "Failed to read Codex CLI exit code"),
+                ),
+              ),
+            ],
+            { concurrency: "unbounded" },
+          );
+
+          if (exitCode !== 0) {
+            const stderrDetail = stderr.trim();
+            const stdoutDetail = stdout.trim();
+            const detail = stderrDetail.length > 0 ? stderrDetail : stdoutDetail;
+            return yield* new TextGenerationError({
+              operation,
+              detail:
+                detail.length > 0
+                  ? `Codex CLI command failed: ${detail}`
+                  : `Codex CLI command failed with code ${exitCode}.`,
+            });
+          }
+        });
+
+        const cleanup = Effect.all(
+          [schemaPath, outputPath, ...cleanupPaths].map((filePath) => safeUnlink(filePath)),
+          {
+            concurrency: "unbounded",
+          },
+        ).pipe(Effect.asVoid);
+
+        return yield* Effect.gen(function* () {
+          yield* runCodexCommand.pipe(
+            Effect.scoped,
+            Effect.timeoutOption(CODEX_TIMEOUT_MS),
+            Effect.flatMap(
+              Option.match({
+                onNone: () =>
+                  Effect.fail(
+                    new TextGenerationError({ operation, detail: "Codex CLI request timed out." }),
+                  ),
+                onSome: () => Effect.void,
+              }),
             ),
           );
 
-        const [stdout, stderr, exitCode] = yield* Effect.all(
-          [
-            readStreamAsString(operation, child.stdout),
-            readStreamAsString(operation, child.stderr),
-            child.exitCode.pipe(
-              Effect.map((value) => Number(value)),
-              Effect.mapError((cause) =>
-                normalizeCodexError(operation, cause, "Failed to read Codex CLI exit code"),
+          return yield* fileSystem.readFileString(outputPath).pipe(
+            Effect.mapError(
+              (cause) =>
+                new TextGenerationError({
+                  operation,
+                  detail: "Failed to read Codex output file.",
+                  cause,
+                }),
+            ),
+            Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(outputSchemaJson))),
+            Effect.catchTag("SchemaError", (cause) =>
+              Effect.fail(
+                new TextGenerationError({
+                  operation,
+                  detail: "Codex returned invalid structured output.",
+                  cause,
+                }),
               ),
             ),
-          ],
-          { concurrency: "unbounded" },
-        );
-
-        if (exitCode !== 0) {
-          const stderrDetail = stderr.trim();
-          const stdoutDetail = stdout.trim();
-          const detail = stderrDetail.length > 0 ? stderrDetail : stdoutDetail;
-          return yield* new TextGenerationError({
-            operation,
-            detail:
-              detail.length > 0
-                ? `Codex CLI command failed: ${detail}`
-                : `Codex CLI command failed with code ${exitCode}.`,
-          });
-        }
+          );
+        }).pipe(Effect.ensuring(cleanup));
       });
 
-      const cleanup = Effect.all(
-        [schemaPath, outputPath, ...cleanupPaths].map((filePath) => safeUnlink(filePath)),
-        {
-          concurrency: "unbounded",
-        },
-      ).pipe(Effect.asVoid);
+    const runClaudeJson = <S extends Schema.Top>({
+      operation,
+      cwd,
+      prompt,
+      outputSchemaJson,
+      model,
+    }: {
+      operation: "generateCommitMessage" | "generatePrContent" | "generateBranchName";
+      cwd: string;
+      prompt: string;
+      outputSchemaJson: S;
+      model?: string;
+    }): Effect.Effect<S["Type"], TextGenerationError, S["DecodingServices"]> =>
+      Effect.gen(function* () {
+        const abortController = new AbortController();
+        const runtime = yield* Effect.try({
+          try: () =>
+            createClaudeQuery({
+              prompt,
+              options: {
+                cwd,
+                ...(model ? { model } : {}),
+                outputFormat: {
+                  type: "json_schema",
+                  schema: toOutputJsonSchema(outputSchemaJson) as Record<string, unknown>,
+                },
+                maxTurns: 1,
+                persistSession: false,
+                includePartialMessages: false,
+                permissionMode: "plan",
+                env: process.env,
+                additionalDirectories: [cwd],
+                abortController,
+              },
+            }),
+          catch: (cause) =>
+            normalizeClaudeError(operation, cause, "Failed to start Claude Code query"),
+        });
 
-      return yield* Effect.gen(function* () {
-        yield* runCodexCommand.pipe(
-          Effect.scoped,
-          Effect.timeoutOption(CODEX_TIMEOUT_MS),
+        const runClaudeQuery = Effect.tryPromise({
+          try: async () => {
+            let resultMessage: Extract<SDKMessage, { type: "result" }> | null = null;
+            for await (const message of runtime) {
+              if (message.type === "result") {
+                resultMessage = message;
+              }
+            }
+
+            if (!resultMessage) {
+              throw new TextGenerationError({
+                operation,
+                detail: "Claude Code query completed without a result message.",
+              });
+            }
+
+            if (resultMessage.subtype !== "success") {
+              throw new TextGenerationError({
+                operation,
+                detail: `Claude Code query failed: ${resultMessage.errors[0] ?? "unknown error"}`,
+              });
+            }
+
+            return resultMessage.structured_output ?? resultMessage.result;
+          },
+          catch: (cause) => normalizeClaudeError(operation, cause, "Claude Code query failed"),
+        });
+
+        return yield* runClaudeQuery.pipe(
+          Effect.timeoutOption(CLAUDE_TIMEOUT_MS),
           Effect.flatMap(
             Option.match({
               onNone: () =>
                 Effect.fail(
-                  new TextGenerationError({ operation, detail: "Codex CLI request timed out." }),
+                  new TextGenerationError({ operation, detail: "Claude Code request timed out." }),
                 ),
-              onSome: () => Effect.void,
+              onSome: (output) =>
+                Effect.succeed(output).pipe(
+                  Effect.flatMap((value) =>
+                    Schema.decodeUnknownEffect(outputSchemaJson as never)(value).pipe(
+                      Effect.mapError(
+                        (cause) =>
+                          new TextGenerationError({
+                            operation,
+                            detail: "Claude returned invalid structured output.",
+                            cause,
+                          }),
+                      ),
+                    ),
+                  ),
+                ),
             }),
           ),
+          Effect.ensuring(Effect.sync(() => runtime.close())),
         );
+      });
 
-        return yield* fileSystem.readFileString(outputPath).pipe(
-          Effect.mapError(
-            (cause) =>
-              new TextGenerationError({
-                operation,
-                detail: "Failed to read Codex output file.",
-                cause,
-              }),
-          ),
-          Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(outputSchemaJson))),
-          Effect.catchTag("SchemaError", (cause) =>
-            Effect.fail(
-              new TextGenerationError({
-                operation,
-                detail: "Codex returned invalid structured output.",
-                cause,
-              }),
-            ),
-          ),
-        );
-      }).pipe(Effect.ensuring(cleanup));
-    });
+    const runStructuredJson = <S extends Schema.Top>(input: {
+      operation: "generateCommitMessage" | "generatePrContent" | "generateBranchName";
+      cwd: string;
+      prompt: string;
+      outputSchemaJson: S;
+      imagePaths?: ReadonlyArray<string>;
+      cleanupPaths?: ReadonlyArray<string>;
+      model?: string;
+    }): Effect.Effect<S["Type"], TextGenerationError, S["DecodingServices"]> =>
+      inferProviderForModel(input.model) === "claudeAgent"
+        ? runClaudeJson(input)
+        : runCodexJson(input);
 
-  const generateCommitMessage: TextGenerationShape["generateCommitMessage"] = (input) => {
-    const wantsBranch = input.includeBranch === true;
+    const generateCommitMessage: TextGenerationShape["generateCommitMessage"] = (input) => {
+      const wantsBranch = input.includeBranch === true;
 
-    const prompt = [
-      "You write concise git commit messages.",
-      wantsBranch
-        ? "Return a JSON object with keys: subject, body, branch."
-        : "Return a JSON object with keys: subject, body.",
-      "Rules:",
-      "- subject must be imperative, <= 72 chars, and no trailing period",
-      "- body can be empty string or short bullet points",
-      ...(wantsBranch
-        ? ["- branch must be a short semantic git branch fragment for this change"]
-        : []),
-      "- capture the primary user-visible or developer-visible change",
-      "",
-      `Branch: ${input.branch ?? "(detached)"}`,
-      "",
-      "Staged files:",
-      limitSection(input.stagedSummary, 6_000),
-      "",
-      "Staged patch:",
-      limitSection(input.stagedPatch, 40_000),
-    ].join("\n");
-
-    const outputSchemaJson = wantsBranch
-      ? Schema.Struct({
-          subject: Schema.String,
-          body: Schema.String,
-          branch: Schema.String,
-        })
-      : Schema.Struct({
-          subject: Schema.String,
-          body: Schema.String,
-        });
-
-    return runCodexJson({
-      operation: "generateCommitMessage",
-      cwd: input.cwd,
-      prompt,
-      outputSchemaJson,
-      ...(input.model ? { model: input.model } : {}),
-    }).pipe(
-      Effect.map(
-        (generated) =>
-          ({
-            subject: sanitizeCommitSubject(generated.subject),
-            body: generated.body.trim(),
-            ...("branch" in generated && typeof generated.branch === "string"
-              ? { branch: sanitizeFeatureBranchName(generated.branch) }
-              : {}),
-          }) satisfies CommitMessageGenerationResult,
-      ),
-    );
-  };
-
-  const generatePrContent: TextGenerationShape["generatePrContent"] = (input) => {
-    const prompt = [
-      "You write GitHub pull request content.",
-      "Return a JSON object with keys: title, body.",
-      "Rules:",
-      "- title should be concise and specific",
-      "- body must be markdown and include headings '## Summary' and '## Testing'",
-      "- under Summary, provide short bullet points",
-      "- under Testing, include bullet points with concrete checks or 'Not run' where appropriate",
-      "",
-      `Base branch: ${input.baseBranch}`,
-      `Head branch: ${input.headBranch}`,
-      "",
-      "Commits:",
-      limitSection(input.commitSummary, 12_000),
-      "",
-      "Diff stat:",
-      limitSection(input.diffSummary, 12_000),
-      "",
-      "Diff patch:",
-      limitSection(input.diffPatch, 40_000),
-    ].join("\n");
-
-    return runCodexJson({
-      operation: "generatePrContent",
-      cwd: input.cwd,
-      prompt,
-      outputSchemaJson: Schema.Struct({
-        title: Schema.String,
-        body: Schema.String,
-      }),
-      ...(input.model ? { model: input.model } : {}),
-    }).pipe(
-      Effect.map(
-        (generated) =>
-          ({
-            title: sanitizePrTitle(generated.title),
-            body: generated.body.trim(),
-          }) satisfies PrContentGenerationResult,
-      ),
-    );
-  };
-
-  const generateBranchName: TextGenerationShape["generateBranchName"] = (input) => {
-    return Effect.gen(function* () {
-      const { imagePaths } = yield* materializeImageAttachments(
-        "generateBranchName",
-        input.attachments,
-      );
-      const attachmentLines = (input.attachments ?? []).map(
-        (attachment) =>
-          `- ${attachment.name} (${attachment.mimeType}, ${attachment.sizeBytes} bytes)`,
-      );
-
-      const promptSections = [
-        "You generate concise git branch names.",
-        "Return a JSON object with key: branch.",
+      const prompt = [
+        "You write concise git commit messages.",
+        wantsBranch
+          ? "Return a JSON object with keys: subject, body, branch."
+          : "Return a JSON object with keys: subject, body.",
         "Rules:",
-        "- Branch should describe the requested work from the user message.",
-        "- Keep it short and specific (2-6 words).",
-        "- Use plain words only, no issue prefixes and no punctuation-heavy text.",
-        "- If images are attached, use them as primary context for visual/UI issues.",
+        "- subject must be imperative, <= 72 chars, and no trailing period",
+        "- body can be empty string or short bullet points",
+        ...(wantsBranch
+          ? ["- branch must be a short semantic git branch fragment for this change"]
+          : []),
+        "- capture the primary user-visible or developer-visible change",
         "",
-        "User message:",
-        limitSection(input.message, 8_000),
-      ];
-      if (attachmentLines.length > 0) {
-        promptSections.push(
-          "",
-          "Attachment metadata:",
-          limitSection(attachmentLines.join("\n"), 4_000),
-        );
-      }
-      const prompt = promptSections.join("\n");
+        `Branch: ${input.branch ?? "(detached)"}`,
+        "",
+        "Staged files:",
+        limitSection(input.stagedSummary, 6_000),
+        "",
+        "Staged patch:",
+        limitSection(input.stagedPatch, 40_000),
+      ].join("\n");
 
-      const generated = yield* runCodexJson({
-        operation: "generateBranchName",
+      const outputSchemaJson = wantsBranch
+        ? Schema.Struct({
+            subject: Schema.String,
+            body: Schema.String,
+            branch: Schema.String,
+          })
+        : Schema.Struct({
+            subject: Schema.String,
+            body: Schema.String,
+          });
+
+      return runStructuredJson({
+        operation: "generateCommitMessage",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson,
+        ...(input.model ? { model: input.model } : {}),
+      }).pipe(
+        Effect.map(
+          (generated) =>
+            ({
+              subject: sanitizeCommitSubject(generated.subject),
+              body: generated.body.trim(),
+              ...("branch" in generated && typeof generated.branch === "string"
+                ? { branch: sanitizeFeatureBranchName(generated.branch) }
+                : {}),
+            }) satisfies CommitMessageGenerationResult,
+        ),
+      );
+    };
+
+    const generatePrContent: TextGenerationShape["generatePrContent"] = (input) => {
+      const prompt = [
+        "You write GitHub pull request content.",
+        "Return a JSON object with keys: title, body.",
+        "Rules:",
+        "- title should be concise and specific",
+        "- body must be markdown and include headings '## Summary' and '## Testing'",
+        "- under Summary, provide short bullet points",
+        "- under Testing, include bullet points with concrete checks or 'Not run' where appropriate",
+        "",
+        `Base branch: ${input.baseBranch}`,
+        `Head branch: ${input.headBranch}`,
+        "",
+        "Commits:",
+        limitSection(input.commitSummary, 12_000),
+        "",
+        "Diff stat:",
+        limitSection(input.diffSummary, 12_000),
+        "",
+        "Diff patch:",
+        limitSection(input.diffPatch, 40_000),
+      ].join("\n");
+
+      return runStructuredJson({
+        operation: "generatePrContent",
         cwd: input.cwd,
         prompt,
         outputSchemaJson: Schema.Struct({
-          branch: Schema.String,
+          title: Schema.String,
+          body: Schema.String,
         }),
-        imagePaths,
         ...(input.model ? { model: input.model } : {}),
+      }).pipe(
+        Effect.map(
+          (generated) =>
+            ({
+              title: sanitizePrTitle(generated.title),
+              body: generated.body.trim(),
+            }) satisfies PrContentGenerationResult,
+        ),
+      );
+    };
+
+    const generateBranchName: TextGenerationShape["generateBranchName"] = (input) => {
+      return Effect.gen(function* () {
+        const { imagePaths } = yield* materializeImageAttachments(
+          "generateBranchName",
+          input.attachments,
+        );
+        const attachmentLines = (input.attachments ?? []).map(
+          (attachment) =>
+            `- ${attachment.name} (${attachment.mimeType}, ${attachment.sizeBytes} bytes)`,
+        );
+
+        const promptSections = [
+          "You generate concise git branch names.",
+          "Return a JSON object with key: branch.",
+          "Rules:",
+          "- Branch should describe the requested work from the user message.",
+          "- Keep it short and specific (2-6 words).",
+          "- Use plain words only, no issue prefixes and no punctuation-heavy text.",
+          "- If images are attached, use them as primary context for visual/UI issues.",
+          "",
+          "User message:",
+          limitSection(input.message, 8_000),
+        ];
+        if (attachmentLines.length > 0) {
+          promptSections.push(
+            "",
+            "Attachment metadata:",
+            limitSection(attachmentLines.join("\n"), 4_000),
+          );
+        }
+        const prompt = promptSections.join("\n");
+
+        const generated = yield* runStructuredJson({
+          operation: "generateBranchName",
+          cwd: input.cwd,
+          prompt,
+          outputSchemaJson: Schema.Struct({
+            branch: Schema.String,
+          }),
+          imagePaths,
+          ...(input.model ? { model: input.model } : {}),
+        });
+
+        return {
+          branch: sanitizeBranchFragment(generated.branch),
+        } satisfies BranchNameGenerationResult;
       });
+    };
 
-      return {
-        branch: sanitizeBranchFragment(generated.branch),
-      } satisfies BranchNameGenerationResult;
-    });
-  };
+    return {
+      generateCommitMessage,
+      generatePrContent,
+      generateBranchName,
+    } satisfies TextGenerationShape;
+  });
 
-  return {
-    generateCommitMessage,
-    generatePrContent,
-    generateBranchName,
-  } satisfies TextGenerationShape;
-});
+export const makeCodexTextGenerationLive = (options?: CodexTextGenerationLiveOptions) =>
+  Layer.effect(TextGeneration, makeCodexTextGeneration(options));
 
-export const CodexTextGenerationLive = Layer.effect(TextGeneration, makeCodexTextGeneration);
+export const CodexTextGenerationLive = makeCodexTextGenerationLive();
