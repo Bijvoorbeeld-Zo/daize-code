@@ -15,15 +15,16 @@ const KeybindingsInvalidEntryIssue = Schema.Struct({
   index: Schema.Number,
 });
 
-const CodexLinearMcpMissingIssue = Schema.Struct({
-  kind: Schema.Literal("codex.linear-mcp-missing"),
+const LinearMcpMissingIssue = Schema.Struct({
+  kind: Schema.Literal("linear-mcp-missing"),
+  provider: ProviderKind,
   message: TrimmedNonEmptyString,
 });
 
 export const ServerConfigIssue = Schema.Union([
   KeybindingsMalformedConfigIssue,
   KeybindingsInvalidEntryIssue,
-  CodexLinearMcpMissingIssue,
+  LinearMcpMissingIssue,
 ]);
 export type ServerConfigIssue = typeof ServerConfigIssue.Type;
 
@@ -64,8 +65,10 @@ export type ServerConfig = typeof ServerConfig.Type;
 export const ServerUpsertKeybindingInput = KeybindingRule;
 export type ServerUpsertKeybindingInput = typeof ServerUpsertKeybindingInput.Type;
 
-export const ServerInstallCodexLinearMcpInput = Schema.Struct({});
-export type ServerInstallCodexLinearMcpInput = typeof ServerInstallCodexLinearMcpInput.Type;
+export const ServerInstallLinearMcpInput = Schema.Struct({
+  provider: ProviderKind,
+});
+export type ServerInstallLinearMcpInput = typeof ServerInstallLinearMcpInput.Type;
 
 export const ServerUpsertKeybindingResult = Schema.Struct({
   keybindings: ResolvedKeybindingsConfig,
@@ -73,14 +76,15 @@ export const ServerUpsertKeybindingResult = Schema.Struct({
 });
 export type ServerUpsertKeybindingResult = typeof ServerUpsertKeybindingResult.Type;
 
-export const ServerInstallCodexLinearMcpResult = Schema.Struct({
+export const ServerInstallLinearMcpResult = Schema.Struct({
+  provider: ProviderKind,
   configPath: TrimmedNonEmptyString,
   changed: Schema.Boolean,
   authStarted: Schema.Boolean,
   browserOpened: Schema.Boolean,
   authUrl: Schema.optional(TrimmedNonEmptyString),
 });
-export type ServerInstallCodexLinearMcpResult = typeof ServerInstallCodexLinearMcpResult.Type;
+export type ServerInstallLinearMcpResult = typeof ServerInstallLinearMcpResult.Type;
 
 export const ServerConfigUpdatedPayload = Schema.Struct({
   issues: ServerConfigIssues,

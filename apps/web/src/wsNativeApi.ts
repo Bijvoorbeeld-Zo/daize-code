@@ -171,8 +171,7 @@ export function createWsNativeApi(): NativeApi {
     server: {
       getConfig: () => transport.request(WS_METHODS.serverGetConfig),
       upsertKeybinding: (input) => transport.request(WS_METHODS.serverUpsertKeybinding, input),
-      installCodexLinearMcp: (input) =>
-        transport.request(WS_METHODS.serverInstallCodexLinearMcp, input ?? {}),
+      installLinearMcp: (input) => transport.request(WS_METHODS.serverInstallLinearMcp, input),
     },
     orchestration: {
       getSnapshot: () => transport.request(ORCHESTRATION_WS_METHODS.getSnapshot),

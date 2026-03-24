@@ -319,18 +319,18 @@ describe("wsNativeApi", () => {
       syncedAt: "2026-03-19T10:00:00.000Z",
     });
     requestMock.mockResolvedValueOnce({
-      configPath: "/Users/jane/.codex/config.toml",
+      provider: "claudeAgent",
+      configPath: "/Users/jane/.claude.json",
       changed: true,
-      authStarted: true,
+      authStarted: false,
       browserOpened: false,
-      authUrl: "https://mcp.linear.app/authorize?state=test",
     });
 
     await api.linear.getConnection();
     await api.linear.listProjects();
     await api.linear.listMyIssues();
     await api.linear.startIssue({ issueId: "issue-1" });
-    await api.server.installCodexLinearMcp();
+    await api.server.installLinearMcp({ provider: "claudeAgent" });
 
     expect(requestMock).toHaveBeenNthCalledWith(1, WS_METHODS.linearGetConnection, {});
     expect(requestMock).toHaveBeenNthCalledWith(2, WS_METHODS.linearListProjects, {});
@@ -340,7 +340,9 @@ describe("wsNativeApi", () => {
     expect(requestMock).toHaveBeenNthCalledWith(4, WS_METHODS.linearStartIssue, {
       issueId: "issue-1",
     });
-    expect(requestMock).toHaveBeenNthCalledWith(5, WS_METHODS.serverInstallCodexLinearMcp, {});
+    expect(requestMock).toHaveBeenNthCalledWith(5, WS_METHODS.serverInstallLinearMcp, {
+      provider: "claudeAgent",
+    });
   });
 
   it("wraps orchestration dispatch commands in the command envelope", async () => {

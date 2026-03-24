@@ -55,11 +55,7 @@ import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnap
 import { OrchestrationReactor } from "./orchestration/Services/OrchestrationReactor";
 import { ProviderService } from "./provider/Services/ProviderService";
 import { ProviderHealth } from "./provider/Services/ProviderHealth";
-import {
-  getCodexLinearMcpIssue,
-  installCodexLinearMcp,
-  startCodexLinearMcpAuth,
-} from "./provider/codexConfig";
+import { getLinearMcpIssues, installLinearMcp } from "./provider/linearMcp";
 import { CheckpointDiffQuery } from "./checkpointing/Services/CheckpointDiffQuery";
 import { clamp } from "effect/Number";
 import { Open, resolveAvailableEditors } from "./open";
@@ -627,8 +623,8 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   const loadServerConfigIssues = () =>
     Effect.gen(function* () {
       const keybindingsConfig = yield* keybindingsManager.loadConfigState;
-      const codexLinearMcpIssues = yield* getCodexLinearMcpIssue;
-      return [...keybindingsConfig.issues, ...codexLinearMcpIssues];
+      const linearMcpIssues = yield* getLinearMcpIssues(cwd);
+      return [...keybindingsConfig.issues, ...linearMcpIssues];
     });
 
   const subscriptionsScope = yield* Scope.make("sequential");
@@ -640,9 +636,9 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
 
   yield* Stream.runForEach(keybindingsManager.streamChanges, (event) =>
     Effect.gen(function* () {
-      const codexLinearMcpIssues = yield* getCodexLinearMcpIssue;
+      const linearMcpIssues = yield* getLinearMcpIssues(cwd);
       yield* pushBus.publishAll(WS_CHANNELS.serverConfigUpdated, {
-        issues: [...event.issues, ...codexLinearMcpIssues],
+        issues: [...event.issues, ...linearMcpIssues],
         providers: providerStatuses,
       });
     }),
@@ -938,13 +934,9 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         return { keybindings: keybindingsConfig, issues: [] };
       }
 
-      case WS_METHODS.serverInstallCodexLinearMcp: {
-        const installResult = yield* installCodexLinearMcp;
-        const authResult = yield* startCodexLinearMcpAuth;
-        return {
-          ...installResult,
-          ...authResult,
-        };
+      case WS_METHODS.serverInstallLinearMcp: {
+        const body = stripRequestTag(request.body);
+        return yield* installLinearMcp({ provider: body.provider, cwd });
       }
 
       default: {

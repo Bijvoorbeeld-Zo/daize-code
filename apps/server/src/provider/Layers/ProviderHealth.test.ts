@@ -12,7 +12,7 @@ import {
   parseClaudeAuthStatusFromOutput,
   readCodexConfigModelProvider,
 } from "./ProviderHealth";
-import { getCodexLinearMcpIssue, readCodexConfigHasLinearMcpServer } from "../codexConfig";
+import { getLinearMcpIssues, readCodexConfigHasLinearMcpServer } from "../linearMcp";
 
 // ── Test helpers ────────────────────────────────────────────────────
 
@@ -92,6 +92,35 @@ function withTempCodexHome(configContent?: string) {
     }
 
     return { tmpDir } as const;
+  });
+}
+
+function withTempClaudeConfig(configContent?: string) {
+  return Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const tmpDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "daize-test-claude-" });
+    const configPath = path.join(tmpDir, ".claude.json");
+
+    yield* Effect.acquireRelease(
+      Effect.sync(() => {
+        const originalPath = process.env.DAIZE_CLAUDE_CONFIG_PATH;
+        process.env.DAIZE_CLAUDE_CONFIG_PATH = configPath;
+        return originalPath;
+      }),
+      (originalPath) =>
+        Effect.sync(() => {
+          if (originalPath !== undefined) {
+            process.env.DAIZE_CLAUDE_CONFIG_PATH = originalPath;
+          } else {
+            delete process.env.DAIZE_CLAUDE_CONFIG_PATH;
+          }
+        }),
+    );
+
+    if (configContent !== undefined) {
+      yield* fileSystem.writeFileString(configPath, configContent);
+    }
   });
 }
 
@@ -262,31 +291,62 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
     );
   });
 
-  describe("getCodexLinearMcpIssue", () => {
-    it.effect("returns an issue when the Linear MCP server is missing", () =>
+  describe("getLinearMcpIssues", () => {
+    it.effect("returns an issue when the Codex Linear MCP server is missing", () =>
       Effect.gen(function* () {
         yield* withTempCodexHome(
           ["[mcp_servers.playwright]", 'command = "npx"', 'args = ["@playwright/mcp@latest"]'].join(
             "\n",
           ),
         );
-        const issues = yield* getCodexLinearMcpIssue;
+        yield* withTempClaudeConfig(
+          JSON.stringify(
+            {
+              projects: {
+                "/tmp/provider-health": {
+                  mcpServers: {
+                    linear: { type: "http", url: "https://mcp.linear.app/mcp" },
+                  },
+                },
+              },
+            },
+            null,
+            2,
+          ),
+        );
+        const issues = yield* getLinearMcpIssues("/tmp/provider-health");
         assert.deepStrictEqual(issues, [
           {
-            kind: "codex.linear-mcp-missing",
+            kind: "linear-mcp-missing",
+            provider: "codex",
             message:
-              "Codex does not have a Linear MCP server configured. Install the Linear MCP in your Codex config before starting tasks from this page.",
+              "Codex does not have a Linear MCP server configured. Install the Linear MCP in Codex before starting tasks from this page.",
           },
         ]);
       }),
     );
 
-    it.effect("returns no issues when the Linear MCP server exists", () =>
+    it.effect("returns no issues when both provider configs have Linear MCP", () =>
       Effect.gen(function* () {
         yield* withTempCodexHome(
           ["[mcp_servers.linear]", 'command = "npx"', 'args = ["@linear/mcp@latest"]'].join("\n"),
         );
-        const issues = yield* getCodexLinearMcpIssue;
+        yield* withTempClaudeConfig(
+          JSON.stringify(
+            {
+              projects: {
+                "/tmp/provider-health": {
+                  mcpServers: {
+                    linear: { type: "http", url: "https://mcp.linear.app/mcp" },
+                  },
+                },
+              },
+            },
+            null,
+            2,
+          ),
+        );
+        const issues = yield* getLinearMcpIssues("/tmp/provider-health");
         assert.deepStrictEqual(issues, []);
       }),
     );

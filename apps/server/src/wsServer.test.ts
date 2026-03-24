@@ -458,6 +458,7 @@ describe("WebSocket Server", () => {
   const connections: WebSocket[] = [];
   const tempDirs: string[] = [];
   let originalCodexHome: string | undefined;
+  let originalClaudeConfigPath: string | undefined;
   let originalLinearMcpAuthUrl: string | undefined;
 
   function makeTempDir(prefix: string): string {
@@ -468,13 +469,32 @@ describe("WebSocket Server", () => {
 
   beforeEach(() => {
     originalCodexHome = process.env.CODEX_HOME;
+    originalClaudeConfigPath = process.env.DAIZE_CLAUDE_CONFIG_PATH;
     originalLinearMcpAuthUrl = process.env.DAIZE_TEST_LINEAR_MCP_AUTH_URL;
     const codexHome = makeTempDir("daize-test-codex-home-");
+    const claudeConfigDir = makeTempDir("daize-test-claude-config-");
     process.env.CODEX_HOME = codexHome;
+    process.env.DAIZE_CLAUDE_CONFIG_PATH = path.join(claudeConfigDir, ".claude.json");
     process.env.DAIZE_TEST_LINEAR_MCP_AUTH_URL = "https://mcp.linear.app/authorize?state=test-auth";
     fs.writeFileSync(
       path.join(codexHome, "config.toml"),
       ["[mcp_servers.linear]", 'command = "npx"', 'args = ["@linear/mcp@latest"]'].join("\n"),
+      "utf8",
+    );
+    fs.writeFileSync(
+      process.env.DAIZE_CLAUDE_CONFIG_PATH,
+      JSON.stringify(
+        {
+          mcpServers: {
+            linear: {
+              type: "http",
+              url: "https://mcp.linear.app/mcp",
+            },
+          },
+        },
+        null,
+        2,
+      ),
       "utf8",
     );
   });
@@ -589,6 +609,11 @@ describe("WebSocket Server", () => {
       process.env.CODEX_HOME = originalCodexHome;
     } else {
       delete process.env.CODEX_HOME;
+    }
+    if (originalClaudeConfigPath !== undefined) {
+      process.env.DAIZE_CLAUDE_CONFIG_PATH = originalClaudeConfigPath;
+    } else {
+      delete process.env.DAIZE_CLAUDE_CONFIG_PATH;
     }
     if (originalLinearMcpAuthUrl !== undefined) {
       process.env.DAIZE_TEST_LINEAR_MCP_AUTH_URL = originalLinearMcpAuthUrl;
@@ -1013,12 +1038,35 @@ describe("WebSocket Server", () => {
   it("includes the missing Linear MCP issue in server.getConfig", async () => {
     const stateDir = makeTempDir("daize-state-linear-mcp-");
     const codexHome = makeTempDir("daize-codex-home-");
-    const originalCodexHome = process.env.CODEX_HOME;
+    const claudeConfigPath = path.join(makeTempDir("daize-claude-config-"), ".claude.json");
+    const previousCodexHome = process.env.CODEX_HOME;
+    const previousClaudeConfigPath = process.env.DAIZE_CLAUDE_CONFIG_PATH;
     process.env.CODEX_HOME = codexHome;
+    process.env.DAIZE_CLAUDE_CONFIG_PATH = claudeConfigPath;
     fs.writeFileSync(
       path.join(codexHome, "config.toml"),
       ["[mcp_servers.playwright]", 'command = "npx"', 'args = ["@playwright/mcp@latest"]'].join(
         "\n",
+      ),
+      "utf8",
+    );
+    fs.writeFileSync(
+      claudeConfigPath,
+      JSON.stringify(
+        {
+          projects: {
+            "/my/workspace": {
+              mcpServers: {
+                linear: {
+                  type: "http",
+                  url: "https://mcp.linear.app/mcp",
+                },
+              },
+            },
+          },
+        },
+        null,
+        2,
       ),
       "utf8",
     );
@@ -1036,16 +1084,22 @@ describe("WebSocket Server", () => {
       expect(response.result).toMatchObject({
         issues: [
           {
-            kind: "codex.linear-mcp-missing",
+            kind: "linear-mcp-missing",
+            provider: "codex",
             message: expect.any(String),
           },
         ],
       });
     } finally {
-      if (originalCodexHome !== undefined) {
-        process.env.CODEX_HOME = originalCodexHome;
+      if (previousCodexHome !== undefined) {
+        process.env.CODEX_HOME = previousCodexHome;
       } else {
         delete process.env.CODEX_HOME;
+      }
+      if (previousClaudeConfigPath !== undefined) {
+        process.env.DAIZE_CLAUDE_CONFIG_PATH = previousClaudeConfigPath;
+      } else {
+        delete process.env.DAIZE_CLAUDE_CONFIG_PATH;
       }
     }
   });
@@ -1272,9 +1326,12 @@ describe("WebSocket Server", () => {
       },
     });
 
-    const installLinearMcpResponse = await sendRequest(ws, WS_METHODS.serverInstallCodexLinearMcp);
+    const installLinearMcpResponse = await sendRequest(ws, WS_METHODS.serverInstallLinearMcp, {
+      provider: "codex",
+    });
     expect(installLinearMcpResponse.error).toBeUndefined();
     expect(installLinearMcpResponse.result).toEqual({
+      provider: "codex",
       configPath: expect.any(String),
       changed: true,
       authStarted: true,

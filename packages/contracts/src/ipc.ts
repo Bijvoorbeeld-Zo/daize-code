@@ -37,8 +37,8 @@ import type {
 } from "./linear";
 import type {
   ServerConfig,
-  ServerInstallCodexLinearMcpInput,
-  ServerInstallCodexLinearMcpResult,
+  ServerInstallLinearMcpInput,
+  ServerInstallLinearMcpResult,
 } from "./server";
 import type {
   TerminalClearInput,
@@ -182,9 +182,7 @@ export interface NativeApi {
   server: {
     getConfig: () => Promise<ServerConfig>;
     upsertKeybinding: (input: ServerUpsertKeybindingInput) => Promise<ServerUpsertKeybindingResult>;
-    installCodexLinearMcp: (
-      input?: ServerInstallCodexLinearMcpInput,
-    ) => Promise<ServerInstallCodexLinearMcpResult>;
+    installLinearMcp: (input: ServerInstallLinearMcpInput) => Promise<ServerInstallLinearMcpResult>;
   };
   orchestration: {
     getSnapshot: () => Promise<OrchestrationReadModel>;

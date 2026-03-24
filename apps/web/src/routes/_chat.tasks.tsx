@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { DEFAULT_RUNTIME_MODE, type ThreadId } from "@daize/contracts";
+import { DEFAULT_RUNTIME_MODE, type ProviderKind, type ThreadId } from "@daize/contracts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, createFileRoute } from "@tanstack/react-router";
 import { PlayIcon, RefreshCwIcon } from "lucide-react";
@@ -104,6 +104,10 @@ function getLinearStatusClasses(statusName: string): {
   };
 }
 
+function getProviderLabel(provider: ProviderKind): string {
+  return provider === "claudeAgent" ? "Claude Code" : "Codex";
+}
+
 function TasksRouteView() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -137,10 +141,16 @@ function TasksRouteView() {
       ),
     [projects],
   );
-  const codexLinearMcpMissingIssue =
-    serverConfigQuery.data?.issues.find((issue) => issue.kind === "codex.linear-mcp-missing") ??
-    null;
-  const hasCodexLinearMcp = codexLinearMcpMissingIssue === null;
+  const selectedTaskProvider = resolveThreadStartModelSelection({
+    selectedModel: settings.defaultModel,
+    projectModel: undefined,
+    customCodexModels: settings.customCodexModels,
+    customClaudeModels: settings.customClaudeModels,
+  }).provider;
+  const selectedLinearMcpMissingIssue =
+    serverConfigQuery.data?.issues.find(
+      (issue) => issue.kind === "linear-mcp-missing" && issue.provider === selectedTaskProvider,
+    ) ?? null;
   const groupedIssues = useMemo(() => {
     const issues = linearIssuesQuery.data?.issues ?? [];
     const groups = new Map<
@@ -175,21 +185,27 @@ function TasksRouteView() {
 
     setInstallingLinearMcp(true);
     try {
-      const result = await api.server.installCodexLinearMcp();
+      const result = await api.server.installLinearMcp({ provider: selectedTaskProvider });
       await queryClient.invalidateQueries({ queryKey: serverQueryKeys.all });
+      const installedProviderLabel = getProviderLabel(result.provider);
       toastManager.add({
         type: "success",
         title: result.changed ? "Linear MCP installed" : "Linear MCP already configured",
-        description: result.authUrl
-          ? `Finish the Linear login in the browser Codex opened. If needed, use: ${result.authUrl}`
-          : result.configPath,
+        description:
+          result.provider === "codex"
+            ? result.authUrl
+              ? `Finish the Linear login in the browser ${installedProviderLabel} opened. If needed, use: ${result.authUrl}`
+              : result.configPath
+            : `Configured in ${installedProviderLabel} for this project. Open Claude Code here and run \`/mcp\` if Linear still needs authentication.`,
       });
     } catch (error) {
       toastManager.add({
         type: "error",
         title: "Could not install or connect Linear MCP",
         description:
-          error instanceof Error ? error.message : "An error occurred while updating Codex config.",
+          error instanceof Error
+            ? error.message
+            : `An error occurred while updating ${getProviderLabel(selectedTaskProvider)} config.`,
       });
     } finally {
       setInstallingLinearMcp(false);
@@ -199,21 +215,32 @@ function TasksRouteView() {
   const handleStartIssue = async (
     issue: NonNullable<typeof linearIssuesQuery.data>["issues"][number],
   ): Promise<void> => {
-    if (!hasCodexLinearMcp) {
-      toastManager.add({
-        type: "warning",
-        title: "Task cannot be started",
-        description: "Install and connect the Linear MCP in Codex first.",
-      });
-      return;
-    }
-
     const linkedProject = findLinkedProjectForLinearIssue(projects, issue);
     if (!linkedProject) {
       toastManager.add({
         type: "warning",
         title: "Task cannot be started",
         description: "Link this Linear project to a Daize Code project in Settings first.",
+      });
+      return;
+    }
+
+    const { provider, model } = resolveThreadStartModelSelection({
+      selectedModel: settings.defaultModel,
+      projectModel: linkedProject.model,
+      customCodexModels: settings.customCodexModels,
+      customClaudeModels: settings.customClaudeModels,
+    });
+    const linearMcpMissingIssue =
+      serverConfigQuery.data?.issues.find(
+        (configIssue) =>
+          configIssue.kind === "linear-mcp-missing" && configIssue.provider === provider,
+      ) ?? null;
+    if (linearMcpMissingIssue) {
+      toastManager.add({
+        type: "warning",
+        title: "Task cannot be started",
+        description: `Install and connect the Linear MCP in ${getProviderLabel(provider)} first.`,
       });
       return;
     }
@@ -225,12 +252,6 @@ function TasksRouteView() {
 
     const createdAt = new Date().toISOString();
     const threadId = newThreadId();
-    const { provider, model } = resolveThreadStartModelSelection({
-      selectedModel: settings.defaultModel,
-      projectModel: linkedProject.model,
-      customCodexModels: settings.customCodexModels,
-      customClaudeModels: settings.customClaudeModels,
-    });
     const prompt = buildLinearIssueStartPrompt({ issue, linkedProject });
 
     setStartingIssueId(issue.id);
@@ -352,11 +373,13 @@ function TasksRouteView() {
 
             {linearConnectionQuery.isLoading ? <TasksLoadingState /> : null}
 
-            {codexLinearMcpMissingIssue ? (
+            {selectedLinearMcpMissingIssue ? (
               <Alert variant="warning">
-                <AlertTitle>Linear MCP missing in Codex</AlertTitle>
+                <AlertTitle>
+                  Linear MCP missing in {getProviderLabel(selectedTaskProvider)}
+                </AlertTitle>
                 <AlertDescription>
-                  <p>{codexLinearMcpMissingIssue.message}</p>
+                  <p>{selectedLinearMcpMissingIssue.message}</p>
                   <div>
                     <Button
                       size="xs"
@@ -364,7 +387,9 @@ function TasksRouteView() {
                       onClick={() => void handleInstallLinearMcp()}
                       disabled={installingLinearMcp}
                     >
-                      {installingLinearMcp ? "Installing..." : "Install & connect Linear MCP"}
+                      {installingLinearMcp
+                        ? "Installing..."
+                        : `Install Linear MCP in ${getProviderLabel(selectedTaskProvider)}`}
                     </Button>
                   </div>
                 </AlertDescription>
@@ -506,6 +531,22 @@ function TasksRouteView() {
                         <div className="divide-y divide-border/70">
                           {group.issues.map((issue) => {
                             const issueStatusClasses = getLinearStatusClasses(issue.status.name);
+                            const linkedProject = findLinkedProjectForLinearIssue(projects, issue);
+                            const issueProvider =
+                              linkedProject === null
+                                ? selectedTaskProvider
+                                : resolveThreadStartModelSelection({
+                                    selectedModel: settings.defaultModel,
+                                    projectModel: linkedProject.model,
+                                    customCodexModels: settings.customCodexModels,
+                                    customClaudeModels: settings.customClaudeModels,
+                                  }).provider;
+                            const missingLinearMcpForIssue =
+                              serverConfigQuery.data?.issues.find(
+                                (configIssue) =>
+                                  configIssue.kind === "linear-mcp-missing" &&
+                                  configIssue.provider === issueProvider,
+                              ) ?? null;
 
                             return (
                               <div
@@ -551,8 +592,8 @@ function TasksRouteView() {
                                     onClick={() => void handleStartIssue(issue)}
                                     disabled={
                                       startingIssueId !== null ||
-                                      !hasCodexLinearMcp ||
-                                      findLinkedProjectForLinearIssue(projects, issue) === null
+                                      missingLinearMcpForIssue !== null ||
+                                      linkedProject === null
                                     }
                                     aria-label={
                                       startingIssueId === issue.id
@@ -560,9 +601,9 @@ function TasksRouteView() {
                                         : `Start ${issue.identifier}`
                                     }
                                     title={
-                                      !hasCodexLinearMcp
-                                        ? "Install and connect the Linear MCP in Codex first"
-                                        : findLinkedProjectForLinearIssue(projects, issue) === null
+                                      missingLinearMcpForIssue !== null
+                                        ? `Install and connect the Linear MCP in ${getProviderLabel(issueProvider)} first`
+                                        : linkedProject === null
                                           ? "Link this Linear project in Settings first"
                                           : `Start ${issue.identifier}`
                                     }
