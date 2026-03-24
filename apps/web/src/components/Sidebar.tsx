@@ -1,5 +1,6 @@
 import {
   ArrowLeftIcon,
+  BlocksIcon,
   ChevronRightIcon,
   FolderIcon,
   GitPullRequestIcon,
@@ -269,6 +270,7 @@ export default function Sidebar() {
   const pathname = useLocation({ select: (loc) => loc.pathname });
   const isOnSettings = pathname === "/settings";
   const isOnTasks = pathname === "/tasks";
+  const isOnSkills = pathname === "/skills";
   const { settings: appSettings } = useAppSettings();
   const { handleNewThread } = useHandleNewThread();
   const routeThreadId = useParams({
@@ -1212,6 +1214,17 @@ export default function Sidebar() {
               >
                 <ListTodoIcon className="size-3.5" />
                 <span className="text-xs">Tasks</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                size="sm"
+                isActive={isOnSkills}
+                className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground data-[active=true]:text-foreground"
+                onClick={() => void navigate({ to: "/skills" })}
+              >
+                <BlocksIcon className="size-3.5" />
+                <span className="text-xs">Skills</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

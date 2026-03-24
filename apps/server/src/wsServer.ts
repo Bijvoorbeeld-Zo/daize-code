@@ -80,6 +80,13 @@ import { makeServerPushBus } from "./wsServer/pushBus.ts";
 import { makeServerReadiness } from "./wsServer/readiness.ts";
 import { decodeJsonResult, formatSchemaError } from "@daize/shared/schemaJson";
 import { LinearService } from "./linear/Services/LinearService.ts";
+import {
+  createSkill,
+  installBundledSkill,
+  installSearchSkill,
+  listSkills,
+  searchSkills,
+} from "./skills";
 
 /**
  * ServerShape - Service API for server lifecycle control.
@@ -829,6 +836,59 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       case WS_METHODS.linearStartIssue: {
         const body = stripRequestTag(request.body);
         return yield* linearService.startIssue(body);
+      }
+
+      case WS_METHODS.skillsList:
+        return yield* Effect.tryPromise({
+          try: () => listSkills(),
+          catch: (cause) =>
+            new RouteRequestError({
+              message: `Failed to load skills: ${String(cause)}`,
+            }),
+        });
+
+      case WS_METHODS.skillsSearch: {
+        const body = stripRequestTag(request.body);
+        return yield* Effect.tryPromise({
+          try: () => searchSkills(body.query),
+          catch: (cause) =>
+            new RouteRequestError({
+              message: `Failed to search skills: ${String(cause)}`,
+            }),
+        });
+      }
+
+      case WS_METHODS.skillsInstall: {
+        const body = stripRequestTag(request.body);
+        return yield* Effect.tryPromise({
+          try: () => installBundledSkill(body),
+          catch: (cause) =>
+            new RouteRequestError({
+              message: `Failed to install skill: ${String(cause)}`,
+            }),
+        });
+      }
+
+      case WS_METHODS.skillsInstallSearch: {
+        const body = stripRequestTag(request.body);
+        return yield* Effect.tryPromise({
+          try: () => installSearchSkill(body),
+          catch: (cause) =>
+            new RouteRequestError({
+              message: `Failed to install skill: ${String(cause)}`,
+            }),
+        });
+      }
+
+      case WS_METHODS.skillsCreate: {
+        const body = stripRequestTag(request.body);
+        return yield* Effect.tryPromise({
+          try: () => createSkill(body),
+          catch: (cause) =>
+            new RouteRequestError({
+              message: `Failed to create skill: ${String(cause)}`,
+            }),
+        });
       }
 
       case WS_METHODS.gitStatus: {

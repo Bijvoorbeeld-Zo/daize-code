@@ -36,6 +36,17 @@ import type {
   LinearStartIssueResult,
 } from "./linear";
 import type {
+  SkillsCreateInput,
+  SkillsCreateResult,
+  SkillsInstallInput,
+  SkillsInstallSearchInput,
+  SkillsInstallSearchResult,
+  SkillsInstallResult,
+  SkillsSearchInput,
+  SkillsSearchResult,
+  SkillsListResult,
+} from "./skills";
+import type {
   ServerConfig,
   ServerInstallLinearMcpInput,
   ServerInstallLinearMcpResult,
@@ -155,6 +166,13 @@ export interface NativeApi {
     listProjects: () => Promise<LinearListProjectsResult>;
     listMyIssues: (input?: LinearListIssuesInput) => Promise<LinearListIssuesResult>;
     startIssue: (input: LinearStartIssueInput) => Promise<LinearStartIssueResult>;
+  };
+  skills: {
+    list: () => Promise<SkillsListResult>;
+    search: (input: SkillsSearchInput) => Promise<SkillsSearchResult>;
+    install: (input: SkillsInstallInput) => Promise<SkillsInstallResult>;
+    installSearch: (input: SkillsInstallSearchInput) => Promise<SkillsInstallSearchResult>;
+    create: (input: SkillsCreateInput) => Promise<SkillsCreateResult>;
   };
   git: {
     // Existing branch/worktree API

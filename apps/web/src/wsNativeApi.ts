@@ -143,6 +143,13 @@ export function createWsNativeApi(): NativeApi {
         }),
       startIssue: (input) => transport.request(WS_METHODS.linearStartIssue, input),
     },
+    skills: {
+      list: () => transport.request(WS_METHODS.skillsList, {}),
+      search: (input) => transport.request(WS_METHODS.skillsSearch, input),
+      install: (input) => transport.request(WS_METHODS.skillsInstall, input),
+      installSearch: (input) => transport.request(WS_METHODS.skillsInstallSearch, input),
+      create: (input) => transport.request(WS_METHODS.skillsCreate, input),
+    },
     git: {
       pull: (input) => transport.request(WS_METHODS.gitPull, input),
       status: (input) => transport.request(WS_METHODS.gitStatus, input),

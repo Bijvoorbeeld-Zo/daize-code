@@ -38,6 +38,12 @@ import { ProjectSearchEntriesInput, ProjectWriteFileInput } from "./project";
 import { OpenInEditorInput } from "./editor";
 import { ServerConfigUpdatedPayload, ServerInstallLinearMcpInput } from "./server";
 import { LinearConnectInput, LinearListIssuesInput, LinearStartIssueInput } from "./linear";
+import {
+  SkillsCreateInput,
+  SkillsInstallInput,
+  SkillsInstallSearchInput,
+  SkillsSearchInput,
+} from "./skills";
 
 // ── WebSocket RPC Method Names ───────────────────────────────────────
 
@@ -59,6 +65,13 @@ export const WS_METHODS = {
   linearListProjects: "linear.listProjects",
   linearListMyIssues: "linear.listMyIssues",
   linearStartIssue: "linear.startIssue",
+
+  // Skills methods
+  skillsList: "skills.list",
+  skillsSearch: "skills.search",
+  skillsInstall: "skills.install",
+  skillsInstallSearch: "skills.installSearch",
+  skillsCreate: "skills.create",
 
   // Git methods
   gitPull: "git.pull",
@@ -132,6 +145,13 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.linearListProjects, Schema.Struct({})),
   tagRequestBody(WS_METHODS.linearListMyIssues, LinearListIssuesInput),
   tagRequestBody(WS_METHODS.linearStartIssue, LinearStartIssueInput),
+
+  // Skills methods
+  tagRequestBody(WS_METHODS.skillsList, Schema.Struct({})),
+  tagRequestBody(WS_METHODS.skillsSearch, SkillsSearchInput),
+  tagRequestBody(WS_METHODS.skillsInstall, SkillsInstallInput),
+  tagRequestBody(WS_METHODS.skillsInstallSearch, SkillsInstallSearchInput),
+  tagRequestBody(WS_METHODS.skillsCreate, SkillsCreateInput),
 
   // Git methods
   tagRequestBody(WS_METHODS.gitPull, GitPullInput),
