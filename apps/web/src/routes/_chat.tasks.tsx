@@ -278,7 +278,7 @@ function TasksRouteView() {
 
     const createdAt = new Date().toISOString();
     const threadId = newThreadId();
-    const prompt = buildLinearIssueStartPrompt({ issue, linkedProject });
+    const prompt = buildLinearIssueStartPrompt({ issue });
 
     setStartingIssueId(issue.id);
 

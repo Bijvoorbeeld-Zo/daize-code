@@ -42,12 +42,9 @@ describe("findLinkedProjectForLinearIssue", () => {
 });
 
 describe("buildLinearIssueStartPrompt", () => {
-  it("includes issue and workspace context", () => {
-    const prompt = buildLinearIssueStartPrompt({ issue, linkedProject });
+  it("returns only the short issue prompt", () => {
+    const prompt = buildLinearIssueStartPrompt({ issue });
 
-    expect(prompt).toContain("Implement Linear issue DAI-28: Auto label");
-    expect(prompt).toContain("- Target Daize Code project: server");
-    expect(prompt).toContain("- Workspace path: /workspace/server");
-    expect(prompt).toContain("- Run bun fmt, bun lint, and bun typecheck before finishing.");
+    expect(prompt).toBe("Implement Linear issue DAI-28: Auto label");
   });
 });

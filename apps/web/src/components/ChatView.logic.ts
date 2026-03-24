@@ -170,6 +170,13 @@ export function filterInstalledSkillsForProvider(
   return skills.filter((skill) => skill.installedFor.includes(installAgent));
 }
 
+export function resolveVisibleProvider(options: {
+  sessionProvider: ProviderKind | null;
+  selectedProvider: ProviderKind;
+}): ProviderKind {
+  return options.sessionProvider ?? options.selectedProvider;
+}
+
 const SKILL_MENTION_REGEX = /(^|\s)\$((?=[a-z0-9-]*[a-z])[a-z0-9][a-z0-9-]*)(?=\s|$)/gi;
 
 export function augmentPromptWithSkillInstructions(options: {

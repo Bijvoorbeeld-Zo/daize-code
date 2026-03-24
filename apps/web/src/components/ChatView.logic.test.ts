@@ -6,6 +6,7 @@ import {
   buildExpiredTerminalContextToastCopy,
   deriveComposerSendState,
   filterInstalledSkillsForProvider,
+  resolveVisibleProvider,
 } from "./ChatView.logic";
 
 describe("deriveComposerSendState", () => {
@@ -112,6 +113,26 @@ describe("filterInstalledSkillsForProvider", () => {
     expect(
       filterInstalledSkillsForProvider(skills, "claudeAgent").map((skill) => skill.slug),
     ).toEqual(["linear", "shared"]);
+  });
+});
+
+describe("resolveVisibleProvider", () => {
+  it("prefers the selected provider before a session exists", () => {
+    expect(
+      resolveVisibleProvider({
+        sessionProvider: null,
+        selectedProvider: "claudeAgent",
+      }),
+    ).toBe("claudeAgent");
+  });
+
+  it("keeps the session provider authoritative after the thread starts", () => {
+    expect(
+      resolveVisibleProvider({
+        sessionProvider: "codex",
+        selectedProvider: "claudeAgent",
+      }),
+    ).toBe("codex");
   });
 });
 
