@@ -1,8 +1,9 @@
-import { type ProjectEntry, type ModelSlug, type ProviderKind } from "@daize/contracts";
+import type { InstalledSkill, ProjectEntry, ModelSlug, ProviderKind } from "@daize/contracts";
 import { memo } from "react";
-import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../composer-logic";
 import { BotIcon } from "lucide-react";
+import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../composer-logic";
 import { cn } from "~/lib/utils";
+import { skillOriginIcon } from "~/skillsMeta";
 import { Badge } from "../ui/badge";
 import { Command, CommandItem, CommandList } from "../ui/command";
 import { VscodeEntryIcon } from "./VscodeEntryIcon";
@@ -20,6 +21,13 @@ export type ComposerCommandItem =
       id: string;
       type: "slash-command";
       command: ComposerSlashCommand;
+      label: string;
+      description: string;
+    }
+  | {
+      id: string;
+      type: "skill";
+      skill: InstalledSkill;
       label: string;
       description: string;
     }
@@ -65,10 +73,14 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
         {props.items.length === 0 && (
           <p className="px-3 py-2 text-muted-foreground/70 text-xs">
             {props.isLoading
-              ? "Searching workspace files..."
+              ? props.triggerKind === "skill"
+                ? "Loading installed skills..."
+                : "Searching workspace files..."
               : props.triggerKind === "path"
                 ? "No matching files or folders."
-                : "No matching command."}
+                : props.triggerKind === "skill"
+                  ? "No installed skills match."
+                  : "No matching command."}
           </p>
         )}
       </div>
@@ -82,6 +94,8 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
   isActive: boolean;
   onSelect: (item: ComposerCommandItem) => void;
 }) {
+  const SkillIcon =
+    props.item.type === "skill" ? skillOriginIcon(props.item.skill.originLabel) : null;
   return (
     <CommandItem
       value={props.item.id}
@@ -106,15 +120,24 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       {props.item.type === "slash-command" ? (
         <BotIcon className="size-4 text-muted-foreground/80" />
       ) : null}
+      {props.item.type === "skill" ? (
+        <span className="flex size-4 shrink-0 items-center justify-center text-foreground">
+          {SkillIcon ? <SkillIcon className="size-3" /> : null}
+        </span>
+      ) : null}
       {props.item.type === "model" ? (
         <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
           model
         </Badge>
       ) : null}
-      <span className="flex min-w-0 items-center gap-1.5 truncate">
-        <span className="truncate">{props.item.label}</span>
-      </span>
-      <span className="truncate text-muted-foreground/70 text-xs">{props.item.description}</span>
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <span className={cn("shrink-0 text-left", props.item.type === "skill" && "max-w-[18rem]")}>
+          {props.item.label}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-muted-foreground/70 text-xs">
+          {props.item.description}
+        </span>
+      </div>
     </CommandItem>
   );
 });

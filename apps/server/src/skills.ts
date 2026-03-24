@@ -408,7 +408,7 @@ export async function listSkills(): Promise<SkillsListResult> {
     ...userDirectories.map((directory) => ({
       slug: directory.slug,
       directoryPath: directory.directoryPath,
-      agent: "claude-code" as const,
+      agent: "codex" as const,
     })),
     ...claudeDirectories.map((directory) => ({
       slug: directory.slug,
@@ -636,7 +636,7 @@ export async function createSkill(input: SkillsCreateInput): Promise<SkillsCreat
   return {
     skill: await readInstalledSkill(
       { slug, directoryPath: targetDirectory },
-      { source: "user", installedFor: ["claude-code"] },
+      { source: "user", installedFor: ["codex"] },
     ),
     created: !alreadyInstalled,
   };

@@ -2,6 +2,7 @@ import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   type TerminalContextDraft,
 } from "./lib/terminalContext";
+import type { InstalledSkill } from "@daize/contracts";
 
 export type ComposerPromptSegment =
   | {
@@ -13,11 +14,17 @@ export type ComposerPromptSegment =
       path: string;
     }
   | {
+      type: "skill";
+      slug: string;
+      skill: InstalledSkill | null;
+    }
+  | {
       type: "terminal-context";
       context: TerminalContextDraft | null;
     };
 
 const MENTION_TOKEN_REGEX = /(^|\s)@([^\s@]+)(?=\s)/g;
+const SKILL_TOKEN_REGEX = /(^|\s)\$((?=[a-z0-9-]*[a-z])[a-z0-9][a-z0-9-]*)(?=\s)/gi;
 
 function pushTextSegment(segments: ComposerPromptSegment[], text: string): void {
   if (!text) return;
@@ -64,9 +71,53 @@ function splitPromptTextIntoComposerSegments(text: string): ComposerPromptSegmen
   return segments;
 }
 
+function splitPromptTextIntoComposerSegmentsWithSkills(
+  text: string,
+  skillsBySlug: ReadonlyMap<string, InstalledSkill>,
+): ComposerPromptSegment[] {
+  const textSegments = splitPromptTextIntoComposerSegments(text);
+  if (textSegments.length === 0) {
+    return textSegments;
+  }
+
+  const segments: ComposerPromptSegment[] = [];
+  for (const segment of textSegments) {
+    if (segment.type !== "text") {
+      segments.push(segment);
+      continue;
+    }
+
+    let cursor = 0;
+    for (const match of segment.text.matchAll(SKILL_TOKEN_REGEX)) {
+      const fullMatch = match[0];
+      const prefix = match[1] ?? "";
+      const slug = (match[2] ?? "").toLowerCase();
+      const skill = skillsBySlug.get(slug) ?? null;
+      const matchIndex = match.index ?? 0;
+      const skillStart = matchIndex + prefix.length;
+      const skillEnd = skillStart + fullMatch.length - prefix.length;
+
+      if (skillStart > cursor) {
+        pushTextSegment(segments, segment.text.slice(cursor, skillStart));
+      }
+
+      segments.push({ type: "skill", slug, skill });
+
+      cursor = skillEnd;
+    }
+
+    if (cursor < segment.text.length) {
+      pushTextSegment(segments, segment.text.slice(cursor));
+    }
+  }
+
+  return segments;
+}
+
 export function splitPromptIntoComposerSegments(
   prompt: string,
   terminalContexts: ReadonlyArray<TerminalContextDraft> = [],
+  installedSkills: ReadonlyArray<InstalledSkill> = [],
 ): ComposerPromptSegment[] {
   if (!prompt) {
     return [];
@@ -75,6 +126,9 @@ export function splitPromptIntoComposerSegments(
   const segments: ComposerPromptSegment[] = [];
   let textCursor = 0;
   let terminalContextIndex = 0;
+  const skillsBySlug = new Map(
+    installedSkills.map((skill) => [skill.slug.trim().toLowerCase(), skill] as const),
+  );
 
   for (let index = 0; index < prompt.length; index += 1) {
     if (prompt[index] !== INLINE_TERMINAL_CONTEXT_PLACEHOLDER) {
@@ -82,7 +136,12 @@ export function splitPromptIntoComposerSegments(
     }
 
     if (index > textCursor) {
-      segments.push(...splitPromptTextIntoComposerSegments(prompt.slice(textCursor, index)));
+      segments.push(
+        ...splitPromptTextIntoComposerSegmentsWithSkills(
+          prompt.slice(textCursor, index),
+          skillsBySlug,
+        ),
+      );
     }
     segments.push({
       type: "terminal-context",
@@ -93,7 +152,9 @@ export function splitPromptIntoComposerSegments(
   }
 
   if (textCursor < prompt.length) {
-    segments.push(...splitPromptTextIntoComposerSegments(prompt.slice(textCursor)));
+    segments.push(
+      ...splitPromptTextIntoComposerSegmentsWithSkills(prompt.slice(textCursor), skillsBySlug),
+    );
   }
 
   return segments;

@@ -88,6 +88,18 @@ describe("detectComposerTrigger", () => {
     });
   });
 
+  it("detects $skill trigger while typing skill slug", () => {
+    const text = "Gebruik $front";
+    const trigger = detectComposerTrigger(text, text.length);
+
+    expect(trigger).toEqual({
+      kind: "skill",
+      query: "front",
+      rangeStart: "Gebruik ".length,
+      rangeEnd: text.length,
+    });
+  });
+
   it("detects trigger with true cursor even when regex-based mention detection would false-match", () => {
     // MENTION_TOKEN_REGEX can false-match plain text like "@in" as a mention.
     // The fix bypasses it by computing the expanded cursor from the Lexical node tree.
@@ -133,6 +145,14 @@ describe("expandCollapsedComposerCursor", () => {
 
     expect(detectComposerTrigger(text, expandedCursor)).toBeNull();
   });
+
+  it("allows skill trigger detection to close after selecting a skill", () => {
+    const text = "gebruik $frontend-design ";
+    const collapsedCursorAfterSkill = "gebruik ".length + 2;
+    const expandedCursor = expandCollapsedComposerCursor(text, collapsedCursorAfterSkill);
+
+    expect(detectComposerTrigger(text, expandedCursor)).toBeNull();
+  });
 });
 
 describe("collapseExpandedComposerCursor", () => {
@@ -158,6 +178,16 @@ describe("collapseExpandedComposerCursor", () => {
     expect(collapsedCursor).toBe("open ".length + 1 + " then ".length + 2);
     expect(expandCollapsedComposerCursor(text, collapsedCursor)).toBe(expandedCursor);
   });
+
+  it("maps expanded skill cursor back to collapsed cursor", () => {
+    const text = "gebruik $frontend-design straks";
+    const collapsedCursorAfterSkill = "gebruik ".length + 2;
+    const expandedCursorAfterSkill = "gebruik $frontend-design ".length;
+
+    expect(collapseExpandedComposerCursor(text, expandedCursorAfterSkill)).toBe(
+      collapsedCursorAfterSkill,
+    );
+  });
 });
 
 describe("clampCollapsedComposerCursor", () => {
@@ -169,6 +199,14 @@ describe("clampCollapsedComposerCursor", () => {
     );
     expect(clampCollapsedComposerCursor(text, Number.POSITIVE_INFINITY)).toBe(
       "open ".length + 1 + " then ".length,
+    );
+  });
+
+  it("clamps to collapsed prompt length when skill tokens are present", () => {
+    const text = "gebruik $frontend-design straks";
+
+    expect(clampCollapsedComposerCursor(text, text.length)).toBe(
+      "gebruik ".length + 1 + " straks".length,
     );
   });
 });

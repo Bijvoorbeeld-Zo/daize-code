@@ -1,4 +1,4 @@
-import { BlocksIcon, PlusIcon, RefreshCwIcon, SquareArrowOutUpRightIcon } from "lucide-react";
+import { PlusIcon, RefreshCwIcon, SquareArrowOutUpRightIcon } from "lucide-react";
 import { useDeferredValue, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -30,14 +30,8 @@ import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
 import { Skeleton } from "../components/ui/skeleton";
 import { toastManager } from "../components/ui/toast";
 import { cn } from "../lib/utils";
-import {
-  ClaudeAI,
-  Gemini,
-  GitHubIcon,
-  MicrosoftIcon,
-  OpenAI,
-  VercelIcon,
-} from "../components/Icons";
+import { skillOriginIcon } from "../skillsMeta";
+import { ClaudeAI, OpenAI } from "../components/Icons";
 
 function matchesSkillQuery(
   skill: Pick<InstalledSkill | RecommendedSkill, "name" | "description" | "slug">,
@@ -64,33 +58,6 @@ function InstalledAgentIcons({ installedFor }: { installedFor: InstalledSkill["i
       {installedFor.includes("claude-code") ? <ClaudeAI className="size-3.5" /> : null}
     </div>
   );
-}
-
-function skillOriginIcon(originLabel: string | undefined) {
-  const normalized = originLabel?.trim().toLowerCase();
-  if (!normalized) {
-    return BlocksIcon;
-  }
-  if (normalized.includes("anthropic") || normalized.includes("claude")) {
-    return ClaudeAI;
-  }
-  if (normalized.includes("openai") || normalized.includes("codex")) {
-    return OpenAI;
-  }
-  if (normalized.includes("vercel")) {
-    return VercelIcon;
-  }
-  if (normalized.includes("microsoft") || normalized.includes("azure")) {
-    return MicrosoftIcon;
-  }
-  if (normalized.includes("github")) {
-    return GitHubIcon;
-  }
-  if (normalized.includes("google") || normalized.includes("gemini")) {
-    return Gemini;
-  }
-
-  return BlocksIcon;
 }
 
 function SkillsSectionSkeleton() {

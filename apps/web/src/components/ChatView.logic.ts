@@ -1,4 +1,10 @@
-import { ProjectId, type ProviderKind, type ThreadId } from "@daize/contracts";
+import {
+  ProjectId,
+  type InstalledSkill,
+  type ProviderKind,
+  type SkillInstallAgent,
+  type ThreadId,
+} from "@daize/contracts";
 import { type ChatMessage, type Thread } from "../types";
 import { randomUUID } from "~/lib/utils";
 import { getAppModelOptionsByProvider } from "../appSettings";
@@ -150,6 +156,62 @@ export function deriveComposerSendState(options: {
     hasSendableContent:
       trimmedPrompt.length > 0 || options.imageCount > 0 || sendableTerminalContexts.length > 0,
   };
+}
+
+export function skillInstallAgentForProvider(provider: ProviderKind): SkillInstallAgent {
+  return provider === "claudeAgent" ? "claude-code" : "codex";
+}
+
+export function filterInstalledSkillsForProvider(
+  skills: ReadonlyArray<InstalledSkill>,
+  provider: ProviderKind,
+): InstalledSkill[] {
+  const installAgent = skillInstallAgentForProvider(provider);
+  return skills.filter((skill) => skill.installedFor.includes(installAgent));
+}
+
+const SKILL_MENTION_REGEX = /(^|\s)\$((?=[a-z0-9-]*[a-z])[a-z0-9][a-z0-9-]*)(?=\s|$)/gi;
+
+export function augmentPromptWithSkillInstructions(options: {
+  text: string;
+  installedSkills: ReadonlyArray<InstalledSkill>;
+}): string {
+  if (options.text.length === 0 || options.installedSkills.length === 0) {
+    return options.text;
+  }
+
+  const skillsBySlug = new Map(
+    options.installedSkills.map((skill) => [skill.slug.trim().toLowerCase(), skill] as const),
+  );
+  const mentionedSkills: InstalledSkill[] = [];
+  const seenSlugs = new Set<string>();
+
+  for (const match of options.text.matchAll(SKILL_MENTION_REGEX)) {
+    const slug = (match[2] ?? "").trim().toLowerCase();
+    if (!slug || seenSlugs.has(slug)) {
+      continue;
+    }
+    const skill = skillsBySlug.get(slug);
+    if (!skill) {
+      continue;
+    }
+    seenSlugs.add(slug);
+    mentionedSkills.push(skill);
+  }
+
+  if (mentionedSkills.length === 0) {
+    return options.text;
+  }
+
+  const mentionedSkillList = mentionedSkills
+    .map((skill) => `$${skill.slug} (${skill.name})`)
+    .join(", ");
+  return [
+    `Use these installed skills for this request: ${mentionedSkillList}.`,
+    "Interpret every matching $skill mention in the user's message as an explicit instruction to load and follow that skill before answering.",
+    "",
+    options.text,
+  ].join("\n");
 }
 
 export function buildExpiredTerminalContextToastCopy(

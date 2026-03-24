@@ -2,6 +2,7 @@ import {
   type ApprovalRequestId,
   DEFAULT_MODEL_BY_PROVIDER,
   type ClaudeCodeEffort,
+  type InstalledSkill,
   type MessageId,
   type ProjectScript,
   type ModelSlug,
@@ -41,6 +42,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { gitBranchesQueryOptions, gitCreateWorktreeMutationOptions } from "~/lib/gitReactQuery";
 import { projectSearchEntriesQueryOptions } from "~/lib/projectReactQuery";
 import { serverConfigQueryOptions, serverQueryKeys } from "~/lib/serverReactQuery";
+import { skillsListQueryOptions } from "~/lib/skillsReactQuery";
 import { isElectron } from "../env";
 import { parseDiffRouteSearch, stripDiffSearchParams } from "../diffRouteSearch";
 import {
@@ -166,12 +168,14 @@ import { ComposerPlanFollowUpBanner } from "./chat/ComposerPlanFollowUpBanner";
 import { ProviderHealthBanner } from "./chat/ProviderHealthBanner";
 import { ThreadErrorBanner } from "./chat/ThreadErrorBanner";
 import {
+  augmentPromptWithSkillInstructions,
   buildExpiredTerminalContextToastCopy,
   buildLocalDraftThread,
   buildTemporaryWorktreeBranchName,
   cloneComposerImageForRetry,
   collectUserMessageBlobPreviewUrls,
   deriveComposerSendState,
+  filterInstalledSkillsForProvider,
   getCustomModelOptionsByProvider,
   LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
   LastInvokedScriptByProjectSchema,
@@ -190,6 +194,7 @@ const IMAGE_ONLY_BOOTSTRAP_PROMPT =
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
 const EMPTY_KEYBINDINGS: ResolvedKeybindingsConfig = [];
 const EMPTY_PROJECT_ENTRIES: ProjectEntry[] = [];
+const EMPTY_INSTALLED_SKILLS: InstalledSkill[] = [];
 const EMPTY_AVAILABLE_EDITORS: EditorId[] = [];
 const EMPTY_PROVIDER_STATUSES: ServerProviderStatus[] = [];
 const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
@@ -198,11 +203,19 @@ function formatOutgoingPrompt(params: {
   provider: ProviderKind;
   effort: string | null;
   text: string;
+  installedSkills?: ReadonlyArray<InstalledSkill>;
 }): string {
+  const textWithSkillInstructions = augmentPromptWithSkillInstructions({
+    text: params.text,
+    installedSkills: params.installedSkills ?? EMPTY_INSTALLED_SKILLS,
+  });
   if (params.provider === "claudeAgent" && params.effort === "ultrathink") {
-    return applyClaudePromptEffortPrefix(params.text, params.effort as ClaudeCodeEffort | null);
+    return applyClaudePromptEffortPrefix(
+      textWithSkillInstructions,
+      params.effort as ClaudeCodeEffort | null,
+    );
   }
-  return params.text;
+  return textWithSkillInstructions;
 }
 const COMPOSER_PATH_QUERY_DEBOUNCE_MS = 120;
 const SCRIPT_TERMINAL_COLS = 120;
@@ -1097,7 +1110,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
       limit: 80,
     }),
   );
+  const skillsQuery = useQuery(skillsListQueryOptions());
   const workspaceEntries = workspaceEntriesQuery.data?.entries ?? EMPTY_PROJECT_ENTRIES;
+  const installedSkills = skillsQuery.data?.installedSkills ?? EMPTY_INSTALLED_SKILLS;
+  const installedSkillsForSelectedProvider = useMemo(
+    () => filterInstalledSkillsForProvider(installedSkills, selectedProvider),
+    [installedSkills, selectedProvider],
+  );
   const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
     if (!composerTrigger) return [];
     if (composerTrigger.kind === "path") {
@@ -1144,6 +1163,24 @@ export default function ChatView({ threadId }: ChatViewProps) {
       );
     }
 
+    if (composerTrigger.kind === "skill") {
+      const query = composerTrigger.query.trim().toLowerCase();
+      return installedSkillsForSelectedProvider
+        .filter((skill) => {
+          if (!query) return true;
+          return [skill.slug, skill.name, skill.description].some((value) =>
+            value.toLowerCase().includes(query),
+          );
+        })
+        .map((skill) => ({
+          id: `skill:${skill.slug}`,
+          type: "skill",
+          skill,
+          label: skill.name,
+          description: skill.description,
+        }));
+    }
+
     return searchableModelOptions
       .filter(({ searchSlug, searchName, searchProvider }) => {
         const query = composerTrigger.query.trim().toLowerCase();
@@ -1160,7 +1197,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
         label: name,
         description: `${providerLabel} · ${slug}`,
       }));
-  }, [composerTrigger, searchableModelOptions, workspaceEntries]);
+  }, [
+    composerTrigger,
+    installedSkillsForSelectedProvider,
+    searchableModelOptions,
+    workspaceEntries,
+  ]);
   const composerMenuOpen = Boolean(composerTrigger);
   const activeComposerMenuItem = useMemo(
     () =>
@@ -2510,10 +2552,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
     );
     const messageIdForSend = newMessageId();
     const messageCreatedAt = new Date().toISOString();
-    const outgoingMessageText = formatOutgoingPrompt({
+    const outgoingMessageText = messageTextForSend || IMAGE_ONLY_BOOTSTRAP_PROMPT;
+    const providerMessageText = formatOutgoingPrompt({
       provider: selectedProvider,
       effort: selectedPromptEffort,
-      text: messageTextForSend || IMAGE_ONLY_BOOTSTRAP_PROMPT,
+      text: outgoingMessageText,
+      installedSkills: installedSkillsForSelectedProvider,
     });
     const turnAttachmentsPromise = Promise.all(
       composerImagesSnapshot.map(async (image) => ({
@@ -2688,7 +2732,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         message: {
           messageId: messageIdForSend,
           role: "user",
-          text: outgoingMessageText,
+          text: providerMessageText,
           attachments: turnAttachments,
         },
         model: selectedModel || undefined,
@@ -2931,10 +2975,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
       const threadIdForSend = activeThread.id;
       const messageIdForSend = newMessageId();
       const messageCreatedAt = new Date().toISOString();
-      const outgoingMessageText = formatOutgoingPrompt({
+      const outgoingMessageText = trimmed;
+      const providerMessageText = formatOutgoingPrompt({
         provider: selectedProvider,
         effort: selectedPromptEffort,
-        text: trimmed,
+        text: outgoingMessageText,
+        installedSkills: installedSkillsForSelectedProvider,
       });
 
       sendInFlightRef.current = true;
@@ -2973,7 +3019,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           message: {
             messageId: messageIdForSend,
             role: "user",
-            text: outgoingMessageText,
+            text: providerMessageText,
             attachments: [],
           },
           provider: selectedProvider,
@@ -3021,6 +3067,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       beginSendPhase,
       forceStickToBottom,
       isConnecting,
+      installedSkillsForSelectedProvider,
       isSendBusy,
       isServerThread,
       persistThreadSettingsForNextTurn,
@@ -3060,6 +3107,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       provider: selectedProvider,
       effort: selectedPromptEffort,
       text: implementationPrompt,
+      installedSkills: installedSkillsForSelectedProvider,
     });
     const nextThreadTitle = truncateTitle(buildPlanImplementationThreadTitle(planMarkdown));
     const nextThreadModel: ModelSlug =
@@ -3149,6 +3197,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     activeProposedPlan,
     activeThread,
     beginSendPhase,
+    installedSkillsForSelectedProvider,
     isConnecting,
     isSendBusy,
     isServerThread,
@@ -3315,6 +3364,24 @@ export default function ChatView({ threadId }: ChatViewProps) {
         }
         return;
       }
+      if (item.type === "skill") {
+        const replacement = `$${item.skill.slug} `;
+        const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
+          snapshot.value,
+          trigger.rangeEnd,
+          replacement,
+        );
+        const applied = applyPromptReplacement(
+          trigger.rangeStart,
+          replacementRangeEnd,
+          replacement,
+          { expectedText: snapshot.value.slice(trigger.rangeStart, replacementRangeEnd) },
+        );
+        if (applied) {
+          setComposerHighlightedItemId(null);
+        }
+        return;
+      }
       if (item.type === "slash-command") {
         if (item.command === "model") {
           const replacement = "/model ";
@@ -3380,10 +3447,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
     [composerHighlightedItemId, composerMenuItems],
   );
   const isComposerMenuLoading =
-    composerTriggerKind === "path" &&
-    ((pathTriggerQuery.length > 0 && composerPathQueryDebouncer.state.isPending) ||
-      workspaceEntriesQuery.isLoading ||
-      workspaceEntriesQuery.isFetching);
+    (composerTriggerKind === "path" &&
+      ((pathTriggerQuery.length > 0 && composerPathQueryDebouncer.state.isPending) ||
+        workspaceEntriesQuery.isLoading ||
+        workspaceEntriesQuery.isFetching)) ||
+    (composerTriggerKind === "skill" && (skillsQuery.isLoading || skillsQuery.isFetching));
 
   const onPromptChange = useCallback(
     (
@@ -3780,6 +3848,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                           ? composerTerminalContexts
                           : []
                       }
+                      installedSkills={installedSkillsForSelectedProvider}
                       onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
                       onChange={onPromptChange}
                       onCommandKeyDown={onComposerCommandKey}
