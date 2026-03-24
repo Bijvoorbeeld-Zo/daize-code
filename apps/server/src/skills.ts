@@ -345,13 +345,16 @@ export function parseSearchSkillsOutput(output: string): SkillsSearchResult["ski
 }
 
 export function parseTrendingSkillsPage(html: string): RecommendedSkill[] {
-  const skillPattern =
-    /<a[^>]+href="\/([^/"<>]+\/[^/"<>]+\/[^/"<>]+)"[^>]*>.*?<h3[^>]*>([^<]+)<\/h3><p[^>]*>([^<]+)<\/p>.*?<span class="font-mono text-sm text-foreground">([^<]+)<\/span>.*?<\/a>/gs;
   const seen = new Set<string>();
   const skills: RecommendedSkill[] = [];
+  const anchorPattern = /<a\b[^>]*href="\/([^/"<>]+\/[^/"<>]+\/[^/"<>]+)"[^>]*>([\s\S]*?)<\/a>/gi;
 
-  for (const match of html.matchAll(skillPattern)) {
-    const [, hrefPath, name, source, installs] = match;
+  for (const match of html.matchAll(anchorPattern)) {
+    const [, hrefPath, contents] = match;
+    const name = contents?.match(/<h3\b[^>]*>\s*([^<]+?)\s*<\/h3>/i)?.[1];
+    const source = contents?.match(/<p\b[^>]*>\s*([^<]+?)\s*<\/p>/i)?.[1];
+    const installs = contents?.match(/<span\b[^>]*>\s*([^<]+?)\s*<\/span>/i)?.[1];
+
     if (!hrefPath || !source || !name || !installs) {
       continue;
     }
