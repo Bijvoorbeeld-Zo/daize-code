@@ -1,6 +1,14 @@
-import { describe, expect, it } from "vitest";
+import * as fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { parseSearchSkillsOutput, parseTrendingSkillsPage } from "./skills";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.resetModules();
+});
 
 describe("parseSearchSkillsOutput", () => {
   it("extracts install refs, urls, slugs, and install counts from skills find output", () => {
@@ -68,5 +76,43 @@ describe("parseTrendingSkillsPage", () => {
 
   it("returns an empty list when the trending payload is missing", () => {
     expect(parseTrendingSkillsPage("<html></html>")).toEqual([]);
+  });
+});
+
+describe("listSkills", () => {
+  it("marks symlinked Claude skill directories as claude-code installs", async () => {
+    const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "daize-skills-home-"));
+    const skillSlug = "find-skills";
+    const userSkillDirectory = path.join(homeDir, ".agents", "skills", skillSlug);
+    const claudeSkillsDirectory = path.join(homeDir, ".claude", "skills");
+
+    await fs.mkdir(userSkillDirectory, { recursive: true });
+    await fs.mkdir(claudeSkillsDirectory, { recursive: true });
+    await fs.writeFile(
+      path.join(userSkillDirectory, "SKILL.md"),
+      "# Find Skills\n\nHelps users discover skills.",
+      "utf8",
+    );
+    await fs.symlink(userSkillDirectory, path.join(claudeSkillsDirectory, skillSlug), "dir");
+
+    vi.doMock("node:os", () => ({
+      default: { ...os, homedir: () => homeDir },
+    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        text: async () => "<html></html>",
+      } satisfies Partial<Response>),
+    );
+
+    const { listSkills } = await import("./skills");
+    const result = await listSkills();
+    const skill = result.installedSkills.find((entry) => entry.slug === skillSlug);
+
+    expect(skill).toMatchObject({
+      slug: skillSlug,
+      installedFor: ["claude-code", "codex"],
+    });
   });
 });

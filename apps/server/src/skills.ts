@@ -211,12 +211,43 @@ function parseOriginLabelFromInstallRef(installRef: string): string | undefined 
 async function readSkillDirectories(rootDirectory: string): Promise<SkillDirectory[]> {
   try {
     const entries = await fs.readdir(rootDirectory, { withFileTypes: true });
-    const directories = entries
-      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
-      .map((entry) => ({
-        slug: entry.name,
-        directoryPath: path.join(rootDirectory, entry.name),
-      }));
+    const directories = (
+      await Promise.all(
+        entries
+          .filter((entry) => !entry.name.startsWith("."))
+          .map(async (entry) => {
+            const directoryPath = path.join(rootDirectory, entry.name);
+            if (entry.isDirectory()) {
+              return {
+                slug: entry.name,
+                directoryPath,
+              } satisfies SkillDirectory;
+            }
+
+            if (!entry.isSymbolicLink()) {
+              return null;
+            }
+
+            try {
+              const stats = await fs.stat(directoryPath);
+              if (!stats.isDirectory()) {
+                return null;
+              }
+
+              return {
+                slug: entry.name,
+                directoryPath,
+              } satisfies SkillDirectory;
+            } catch (error) {
+              const code = (error as NodeJS.ErrnoException).code;
+              if (code === "ENOENT") {
+                return null;
+              }
+              throw error;
+            }
+          }),
+      )
+    ).filter((directory): directory is SkillDirectory => directory !== null);
 
     const existing = await Promise.all(
       directories.map(async (directory) => ({
